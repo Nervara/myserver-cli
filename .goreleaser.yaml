@@ -1,0 +1,77 @@
+# Goreleaser config — builds prebuilt binaries for each release tag and
+# attaches them to the GitHub release. The npm publish pipeline in
+# .github/workflows/release.yml consumes the resulting `dist/` tree.
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: myserver
+    main: ./cmd/myserver
+    binary: myserver
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows on ARM64 is rare; skip to keep the matrix tight. Add later if asked.
+      - goos: windows
+        goarch: arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.cliVersion={{.Version}}
+
+archives:
+  - id: default
+    name_template: "myserver_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Goreleaser v2.x deprecated the singular `format` under
+    # format_overrides in favour of the plural `formats` list.
+    format_overrides:
+      - goos: windows
+        formats: ["zip"]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+release:
+  github:
+    owner: nervara
+    name: myserver-cli
+  draft: false
+  prerelease: auto
+  header: |
+    ## myserver-cli {{ .Version }}
+
+    Install via npm:
+
+    ```bash
+    npm install -g @serverops/myserver-cli@{{ .Version }}
+    ```
+
+    Or grab a prebuilt binary below. Checksums are in `checksums.txt`.
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
