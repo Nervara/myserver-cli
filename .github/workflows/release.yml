@@ -1,0 +1,102 @@
+# Release pipeline:
+#   1. Triggered by pushing a `v*` tag (e.g. `v0.1.0`).
+#   2. Goreleaser builds the binary for 5 platforms + creates a draft
+#      GitHub Release with archives + checksums.
+#   3. We then stage per-platform npm packages via npm/build-platform-packages.mjs
+#      and publish each one + the top-level @serverops/myserver-cli.
+#
+# Secrets required (configured in repo settings):
+#   - GITHUB_TOKEN: provided by Actions, used by goreleaser
+#   - NPM_TOKEN:    npm automation token with publish access to @serverops
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (without leading v). Used only for manual reruns."
+        required: false
+
+permissions:
+  contents: write # goreleaser uploads to the Release
+  # `npm publish --provenance` needs an OIDC token so the npm registry can
+  # verify the publish came from this exact workflow + commit. Without
+  # this the publish step would fail with "must have id-token: write".
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser needs full history for changelog
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stage npm platform packages
+        env:
+          MYSERVER_CLI_VERSION: ${{ steps.ver.outputs.value }}
+        run: node npm/build-platform-packages.mjs
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          for dir in npm-packages/*/; do
+            echo "publishing $(basename "$dir")"
+            (cd "$dir" && npm publish --access public --provenance)
+          done
+
+      - name: Sync top-level package version
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const v = process.env.VERSION;
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            p.version = v;
+            for (const k of Object.keys(p.optionalDependencies || {})) {
+              p.optionalDependencies[k] = v;
+            }
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+        env:
+          VERSION: ${{ steps.ver.outputs.value }}
+
+      - name: Publish top-level package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance

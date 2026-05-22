@@ -1,0 +1,28 @@
+# Go build artifacts.
+# IMPORTANT: bin/ is intentionally NOT ignored — bin/myserver.js is the
+# npm wrapper that ships in the published package (per package.json
+# `bin` mapping). Go binaries are built to the repo root (gitignored via
+# `/myserver` below) or to dist/ via goreleaser; nothing in this repo
+# legitimately writes to bin/. If someone accidentally `go build -o bin/`,
+# git status will warn them rather than silently swallowing the binary.
+dist/
+*.exe
+*.test
+*.out
+coverage.html
+
+# Editor + OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# npm publishing artifacts
+node_modules/
+npm-debug.log*
+
+# Local credentials never belong in source
+.env
+.env.local
+credentials.json
+/myserver
