@@ -2,7 +2,7 @@
 
 The official command-line interface and MCP server for [myserver](https://serverops.cloud) — a self-hostable PaaS for deploying apps, databases, and services.
 
-Built as a single Go binary. No daemon, no background process. Wraps the myserver HTTP API.
+Built as a single Go binary. No daemon, no background process. Wraps the myserver HTTP API. Distributed as a single npm package that downloads the right binary for your platform at install time.
 
 ## Install
 
@@ -12,7 +12,19 @@ npm install -g @serverops/myserver-cli
 bun add -g @serverops/myserver-cli
 ```
 
-Stand-alone binary downloads are attached to every [GitHub release](https://github.com/Nervara/myserver-cli/releases) for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64`.
+The postinstall script detects your OS + arch and downloads the matching prebuilt binary from GitHub releases. No native dependencies, no per-platform packages.
+
+**Env overrides** (for testing / custom mirrors):
+
+```bash
+# Use a local mirror
+MYSERVER_CLI_DOWNLOAD_BASE=http://localhost:8080 npm install -g @serverops/myserver-cli
+
+# Pin a specific version tag
+MYSERVER_CLI_VERSION=v0.2.0 npm install -g @serverops/myserver-cli
+```
+
+Standalone binary downloads are attached to every [GitHub release](https://github.com/Nervara/myserver/releases) for `darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`, and `windows-amd64`.
 
 ## Quick start
 
