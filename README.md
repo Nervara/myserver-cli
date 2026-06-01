@@ -24,7 +24,7 @@ MYSERVER_CLI_DOWNLOAD_BASE=http://localhost:8080 npm install -g @serverops/myser
 MYSERVER_CLI_VERSION=v0.2.0 npm install -g @serverops/myserver-cli
 ```
 
-Standalone binary downloads are attached to every [GitHub release](https://github.com/Nervara/myserver/releases) for `darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`, and `windows-amd64`.
+Standalone binary downloads are attached to every [GitHub release](https://github.com/Nervara/myserver-cli/releases) for `darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`, and `windows-amd64`.
 
 ## Quick start
 

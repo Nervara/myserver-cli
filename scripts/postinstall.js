@@ -62,7 +62,7 @@ const version = process.env.MYSERVER_CLI_VERSION || `v${pkg.version}`;
 const downloadBase =
   (process.env.MYSERVER_CLI_DOWNLOAD_BASE || "")
     .replace(/\/+$/, "") ||
-  `https://github.com/Nervara/myserver/releases/download/${version}`;
+  `https://github.com/Nervara/myserver-cli/releases/download/${version}`;
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
