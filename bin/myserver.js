@@ -23,9 +23,9 @@ function resolveBinary() {
       "Fixes:\n" +
       "  npm install --ignore-scripts=false @serverops/myserver-cli\n" +
       "  # or download directly:\n" +
-      "  # https://github.com/Nervara/myserver/releases\n" +
+      "  # https://github.com/Nervara/myserver-cli/releases\n" +
       "\n" +
-      "Reach out at https://github.com/Nervara/myserver/issues if this persists.",
+      "Reach out at https://github.com/Nervara/myserver-cli/issues if this persists.",
   );
   process.exit(1);
 }
