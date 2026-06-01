@@ -1,9 +1,7 @@
 # Release pipeline:
-#   1. Triggered by pushing a `v*` tag (e.g. `v0.1.0`).
-#   2. Goreleaser builds the binary for 5 platforms + creates a draft
-#      GitHub Release with archives + checksums.
-#   3. We then stage per-platform npm packages via npm/build-platform-packages.mjs
-#      and publish each one + the top-level @serverops/myserver-cli.
+#   1. Triggered by pushing a `v*` tag (e.g. `v0.1.117`).
+#   2. Goreleaser builds binary archives for the GitHub Release.
+#   3. We publish the single top-level @serverops/myserver-cli package.
 #
 # Secrets required (configured in repo settings):
 #   - GITHUB_TOKEN: provided by Actions, used by goreleaser
@@ -66,21 +64,6 @@ jobs:
             echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Stage npm platform packages
-        env:
-          MYSERVER_CLI_VERSION: ${{ steps.ver.outputs.value }}
-        run: node npm/build-platform-packages.mjs
-
-      - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          for dir in npm-packages/*/; do
-            echo "publishing $(basename "$dir")"
-            (cd "$dir" && npm publish --access public --provenance)
-          done
-
       - name: Sync top-level package version
         run: |
           node -e '
@@ -88,9 +71,6 @@ jobs:
             const v = process.env.VERSION;
             const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
             p.version = v;
-            for (const k of Object.keys(p.optionalDependencies || {})) {
-              p.optionalDependencies[k] = v;
-            }
             fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
           '
         env:
