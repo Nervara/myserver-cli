@@ -89,9 +89,21 @@ func TestAppCreateRequestIncludesDockerRegistryID(t *testing.T) {
 	}
 }
 
+func TestRunAppListHelp(t *testing.T) {
+	if err := runApp([]string{"list", "-h"}); err != nil {
+		t.Fatalf("app list help: %v", err)
+	}
+}
+
 func TestRunAppGetHelp(t *testing.T) {
 	if err := runApp([]string{"get", "-h"}); err != nil {
 		t.Fatalf("app get help: %v", err)
+	}
+}
+
+func TestRunAppDeployHelp(t *testing.T) {
+	if err := runApp([]string{"deploy", "-h"}); err != nil {
+		t.Fatalf("app deploy help: %v", err)
 	}
 }
 

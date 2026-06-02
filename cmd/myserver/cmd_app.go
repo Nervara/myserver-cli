@@ -21,6 +21,8 @@ func runApp(args []string) error {
 		return fmt.Errorf("no subcommand specified")
 	}
 	switch args[0] {
+	case "list", "ls":
+		return runAppList(args[1:])
 	case "get", "show":
 		return runAppGet(args[1:])
 	case "create":
@@ -33,6 +35,8 @@ func runApp(args []string) error {
 		return runAppLifecycle(args[1:], "stop", "Stop a running app on the given server")
 	case "restart":
 		return runAppLifecycle(args[1:], "restart", "Restart an app on the given server")
+	case "deploy":
+		return runAppDeploy(args[1:])
 	case "delete", "rm":
 		return runAppDelete(args[1:])
 	case "-h", "--help", "help":
@@ -47,13 +51,55 @@ func runApp(args []string) error {
 func appUsage() {
 	fmt.Fprintln(os.Stderr, "Usage: myserver app <subcommand> [flags]")
 	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "  list     List applications in the team.")
 	fmt.Fprintln(os.Stderr, "  get      Show one application by id.")
 	fmt.Fprintln(os.Stderr, "  create   Create a new application in a team's environment.")
 	fmt.Fprintln(os.Stderr, "  update   Patch an existing application's config (build_pack, fqdn, image, …).")
 	fmt.Fprintln(os.Stderr, "  start    Start a stopped application on the given server.")
 	fmt.Fprintln(os.Stderr, "  stop     Stop a running application (containers gone, image+config remain).")
 	fmt.Fprintln(os.Stderr, "  restart  Restart an application's containers on the given server.")
+	fmt.Fprintln(os.Stderr, "  deploy   Deploy an application (pull/build image, (re)start its container).")
 	fmt.Fprintln(os.Stderr, "  delete   Soft-delete the app. Cascade-removes deployments, env vars, tokens.")
+}
+
+// runAppList lists the applications in a team: one row per app with id,
+// name, build pack, status, and FQDN. Mirrors `project list` / `server list`.
+func runAppList(args []string) error {
+	fs := flag.NewFlagSet("app list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	teamID := fs.Int64("team", 0, "team id (defaults to ./myserver.json or your only team)")
+	apiURL := fs.String("api", "", "myserver API URL (defaults to logged-in URL)")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if *teamID == 0 {
+		if pc, err := loadProjectConfig(); err == nil && pc != nil {
+			*teamID = pc.TeamID
+		}
+	}
+	api, _, err := resolveTeamAPI(*teamID, *apiURL)
+	if err != nil {
+		return err
+	}
+	apps, err := api.listApps()
+	if err != nil {
+		return fmt.Errorf("list apps: %w", err)
+	}
+	if len(apps) == 0 {
+		fmt.Fprintln(os.Stderr, "(no applications)")
+		return nil
+	}
+	for _, a := range apps {
+		fqdn := a.FQDN
+		if fqdn == "" {
+			fqdn = "-"
+		}
+		fmt.Printf("%d\t%s\t[%s]\t%s\t%s\n", a.ID, a.Name, a.BuildPack, a.Status, fqdn)
+	}
+	return nil
 }
 
 func runAppGet(args []string) error {
@@ -128,6 +174,68 @@ func printApp(app *Application) {
 	if app.DockerRegistryID != nil {
 		fmt.Printf("docker_registry_id:\t%d\n", *app.DockerRegistryID)
 	}
+}
+
+// runAppDeploy triggers a deployment of an existing application. The
+// deployment fans out to the app's configured server(s) server-side, so
+// there is no --server flag. Prints the deployment id to stdout for scripts.
+func runAppDeploy(args []string) error {
+	fs := flag.NewFlagSet("app deploy", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	teamID := fs.Int64("team", 0, "team id (defaults to ./myserver.json or your only team)")
+	appID := fs.Int64("app", 0, "application id (positional, --app, or ./myserver.json)")
+	apiURL := fs.String("api", "", "myserver API URL (defaults to logged-in URL)")
+
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: myserver app deploy <id> [flags]")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Deploy an existing application: pull/build its image and (re)start")
+		fmt.Fprintln(os.Stderr, "  its container on the app's server. The id may be given positionally,")
+		fmt.Fprintln(os.Stderr, "  via --app, or inferred from ./myserver.json.")
+	}
+
+	var leadID int64
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		if v, perr := strconv.ParseInt(args[0], 10, 64); perr == nil {
+			leadID = v
+			args = args[1:]
+		}
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if *appID == 0 {
+		*appID = leadID
+	}
+	if *appID == 0 || *teamID == 0 {
+		if pc, err := loadProjectConfig(); err == nil && pc != nil {
+			if *appID == 0 {
+				*appID = pc.AppID
+			}
+			if *teamID == 0 {
+				*teamID = pc.TeamID
+			}
+		}
+	}
+	if *appID == 0 {
+		fs.Usage()
+		return fmt.Errorf("app id is required (positional, --app, or myserver.json)")
+	}
+
+	api, _, err := resolveTeamAPI(*teamID, *apiURL)
+	if err != nil {
+		return err
+	}
+	dep, err := api.deployApp(*appID)
+	if err != nil {
+		return fmt.Errorf("deploy app %d: %w", *appID, err)
+	}
+	fmt.Fprintf(os.Stderr, "Deploy queued for app %d (deployment %d)\n", *appID, dep.ID)
+	fmt.Println(dep.ID)
+	return nil
 }
 
 // runAppLifecycle is the shared driver for start/stop/restart — they
