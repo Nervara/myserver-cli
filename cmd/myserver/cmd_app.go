@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,8 @@ func runApp(args []string) error {
 		return fmt.Errorf("no subcommand specified")
 	}
 	switch args[0] {
+	case "get", "show":
+		return runAppGet(args[1:])
 	case "create":
 		return runAppCreate(args[1:])
 	case "update":
@@ -44,12 +47,87 @@ func runApp(args []string) error {
 func appUsage() {
 	fmt.Fprintln(os.Stderr, "Usage: myserver app <subcommand> [flags]")
 	fmt.Fprintln(os.Stderr, "")
+	fmt.Fprintln(os.Stderr, "  get      Show one application by id.")
 	fmt.Fprintln(os.Stderr, "  create   Create a new application in a team's environment.")
 	fmt.Fprintln(os.Stderr, "  update   Patch an existing application's config (build_pack, fqdn, image, …).")
 	fmt.Fprintln(os.Stderr, "  start    Start a stopped application on the given server.")
 	fmt.Fprintln(os.Stderr, "  stop     Stop a running application (containers gone, image+config remain).")
 	fmt.Fprintln(os.Stderr, "  restart  Restart an application's containers on the given server.")
 	fmt.Fprintln(os.Stderr, "  delete   Soft-delete the app. Cascade-removes deployments, env vars, tokens.")
+}
+
+func runAppGet(args []string) error {
+	fs := flag.NewFlagSet("app get", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	teamID := fs.Int64("team", 0, "team id (defaults to ./myserver.json or your only team)")
+	appID := fs.Int64("app", 0, "application id (positional, --app, or ./myserver.json)")
+	apiURL := fs.String("api", "", "myserver API URL (defaults to logged-in URL)")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "Usage: myserver app get <id> [flags]")
+	}
+	var leadID int64
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		if v, perr := strconv.ParseInt(args[0], 10, 64); perr == nil {
+			leadID = v
+			args = args[1:]
+		}
+	}
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if *appID == 0 {
+		*appID = leadID
+	}
+	if *appID == 0 || *teamID == 0 {
+		if pc, err := loadProjectConfig(); err == nil && pc != nil {
+			if *appID == 0 {
+				*appID = pc.AppID
+			}
+			if *teamID == 0 {
+				*teamID = pc.TeamID
+			}
+		}
+	}
+	if *appID == 0 {
+		fs.Usage()
+		return fmt.Errorf("app id is required (positional, --app, or myserver.json)")
+	}
+	api, _, err := resolveTeamAPI(*teamID, *apiURL)
+	if err != nil {
+		return err
+	}
+	app, err := api.getApp(*appID)
+	if err != nil {
+		return fmt.Errorf("get app %d: %w", *appID, err)
+	}
+	printApp(app)
+	return nil
+}
+
+func printApp(app *Application) {
+	fmt.Printf("id:\t%d\n", app.ID)
+	fmt.Printf("name:\t%s\n", app.Name)
+	fmt.Printf("build_pack:\t%s\n", app.BuildPack)
+	fmt.Printf("status:\t%s\n", app.Status)
+	fmt.Printf("environment_id:\t%d\n", app.EnvironmentID)
+	if app.DestinationID != nil {
+		fmt.Printf("server_id:\t%d\n", *app.DestinationID)
+	}
+	if app.FQDN != "" {
+		fmt.Printf("fqdn:\t%s\n", app.FQDN)
+	}
+	if app.PortsExposes != "" {
+		fmt.Printf("ports_exposes:\t%s\n", app.PortsExposes)
+	}
+	if app.DockerRegistryImageName != "" || app.DockerRegistryImageTag != "" {
+		fmt.Printf("image:\t%s:%s\n", app.DockerRegistryImageName, app.DockerRegistryImageTag)
+	}
+	if app.DockerRegistryID != nil {
+		fmt.Printf("docker_registry_id:\t%d\n", *app.DockerRegistryID)
+	}
 }
 
 // runAppLifecycle is the shared driver for start/stop/restart — they
@@ -216,6 +294,7 @@ func runAppCreate(args []string) error {
 	composeLoc := fs.String("compose-location", "", "path to docker-compose.yml inside the repo (build-pack=dockercompose)")
 	imageName := fs.String("image", "", "docker image name (build-pack=docker-image)")
 	imageTag := fs.String("image-tag", "", "docker image tag (build-pack=docker-image, defaults to 'latest')")
+	registryID := fs.Int64("registry-id", 0, "private Docker registry id for pulling --image")
 	staticImage := fs.String("static-image", "", "static-site base image (build-pack=static)")
 	apiURL := fs.String("api", "", "myserver API URL (defaults to logged-in URL)")
 
@@ -237,7 +316,7 @@ func runAppCreate(args []string) error {
 		fmt.Fprintln(os.Stderr, "Build-pack specific:")
 		fmt.Fprintln(os.Stderr, "  --dockerfile-location=<path>")
 		fmt.Fprintln(os.Stderr, "  --compose-location=<path>")
-		fmt.Fprintln(os.Stderr, "  --image=<name> --image-tag=<tag>")
+		fmt.Fprintln(os.Stderr, "  --image=<name> --image-tag=<tag> [--registry-id=<id>]")
 		fmt.Fprintln(os.Stderr, "  --static-image=<image>")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Example:")
@@ -327,6 +406,9 @@ func runAppCreate(args []string) error {
 	}
 	if s := strings.TrimSpace(*imageTag); s != "" {
 		req.DockerRegistryImageTag = &s
+	}
+	if *registryID > 0 {
+		req.DockerRegistryID = registryID
 	}
 	if s := strings.TrimSpace(*staticImage); s != "" {
 		req.StaticImage = &s

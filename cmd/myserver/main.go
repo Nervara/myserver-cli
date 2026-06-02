@@ -36,6 +36,8 @@ var commands = []cmd{
 	{"project", "list / create projects (`project list`, `project create`)", runProject},
 	{"env", "list / create environments (`env list`, `env create`)", runEnv},
 	{"app", "create / manage applications (`app create`)", runApp},
+	{"deployment", "inspect deployments (`deployment get`)", runDeployment},
+	{"registry", "manage private Docker registries (`registry create/list`)", runRegistry},
 	{"sqlite", "attach / list managed SQLite resources (`sqlite create`)", runSqlite},
 	{"token", "manage app service tokens (`token create/list/revoke`)", runToken},
 	{"domains", "manage app hostnames (`domains list/add/remove`)", runDomains},
