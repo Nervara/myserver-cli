@@ -202,6 +202,32 @@ type Application struct {
 	DestinationID           *int64 `json:"destination_id"`
 	DockerRegistryImageName string `json:"docker_registry_image_name"`
 	DockerRegistryImageTag  string `json:"docker_registry_image_tag"`
+	DockerRegistryID        *int64 `json:"docker_registry_id"`
+}
+
+type DockerRegistry struct {
+	ID          int64  `json:"id"`
+	TeamID      int64  `json:"team_id"`
+	Name        string `json:"name"`
+	RegistryURL string `json:"registry_url"`
+	Username    string `json:"username"`
+	IsSystem    bool   `json:"is_system"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type CreateDockerRegistryRequest struct {
+	Name        string `json:"name"`
+	RegistryURL string `json:"registry_url"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+}
+
+type UpdateDockerRegistryRequest struct {
+	Name        *string `json:"name,omitempty"`
+	RegistryURL *string `json:"registry_url,omitempty"`
+	Username    *string `json:"username,omitempty"`
+	Password    *string `json:"password,omitempty"`
 }
 
 type Deployment struct {
@@ -367,6 +393,42 @@ func (a *apiClient) listApps() ([]Application, error) {
 	return apps, nil
 }
 
+func (a *apiClient) listDockerRegistries() ([]DockerRegistry, error) {
+	var regs []DockerRegistry
+	if err := a.do("GET", "/api/v1/docker-registries/", nil, &regs); err != nil {
+		return nil, err
+	}
+	return regs, nil
+}
+
+func (a *apiClient) createDockerRegistry(req CreateDockerRegistryRequest) (*DockerRegistry, error) {
+	var reg DockerRegistry
+	if err := a.do("POST", "/api/v1/docker-registries/", req, &reg); err != nil {
+		return nil, err
+	}
+	return &reg, nil
+}
+
+func (a *apiClient) getDockerRegistry(id int64) (*DockerRegistry, error) {
+	var reg DockerRegistry
+	if err := a.do("GET", fmt.Sprintf("/api/v1/docker-registries/%d", id), nil, &reg); err != nil {
+		return nil, err
+	}
+	return &reg, nil
+}
+
+func (a *apiClient) updateDockerRegistry(id int64, req UpdateDockerRegistryRequest) (*DockerRegistry, error) {
+	var reg DockerRegistry
+	if err := a.do("PATCH", fmt.Sprintf("/api/v1/docker-registries/%d", id), req, &reg); err != nil {
+		return nil, err
+	}
+	return &reg, nil
+}
+
+func (a *apiClient) deleteDockerRegistry(id int64) error {
+	return a.do("DELETE", fmt.Sprintf("/api/v1/docker-registries/%d", id), nil, nil)
+}
+
 // CreateApplicationRequest covers the common-path fields for `myserver app
 // create`. The full server-side struct has ~50 fields (canary settings,
 // resource limits, forward-auth, etc.); we expose the ones a customer or
@@ -394,6 +456,7 @@ type CreateApplicationRequest struct {
 	DockerComposeRaw        *string `json:"docker_compose,omitempty"`
 	DockerRegistryImageName *string `json:"docker_registry_image_name,omitempty"`
 	DockerRegistryImageTag  *string `json:"docker_registry_image_tag,omitempty"`
+	DockerRegistryID        *int64  `json:"docker_registry_id,omitempty"`
 	StaticImage             *string `json:"static_image,omitempty"`
 
 	// Health checks — server applies sensible defaults if unset.
@@ -927,19 +990,19 @@ func (a *apiClient) getSqliteResource(id int64) (*SQLiteResource, error) {
 // AppServiceToken mirrors the server-side row, minus the plaintext
 // (which exists only in CreateAppTokenResponse).
 type AppServiceToken struct {
-	ID             int64    `json:"id"`
-	UUID           string   `json:"uuid"`
-	ApplicationID  int64    `json:"application_id"`
-	TeamID         int64    `json:"team_id"`
-	TokenPrefix    string   `json:"token_prefix"`
-	Scopes         []string `json:"scopes"`
-	Name           string   `json:"name"`
-	AutoInject     bool     `json:"auto_inject"`
-	CreatedBy      int64    `json:"created_by"`
-	ExpiresAt      *string  `json:"expires_at,omitempty"`
-	LastUsedAt     *string  `json:"last_used_at,omitempty"`
-	RevokedAt      *string  `json:"revoked_at,omitempty"`
-	CreatedAt      string   `json:"created_at"`
+	ID            int64    `json:"id"`
+	UUID          string   `json:"uuid"`
+	ApplicationID int64    `json:"application_id"`
+	TeamID        int64    `json:"team_id"`
+	TokenPrefix   string   `json:"token_prefix"`
+	Scopes        []string `json:"scopes"`
+	Name          string   `json:"name"`
+	AutoInject    bool     `json:"auto_inject"`
+	CreatedBy     int64    `json:"created_by"`
+	ExpiresAt     *string  `json:"expires_at,omitempty"`
+	LastUsedAt    *string  `json:"last_used_at,omitempty"`
+	RevokedAt     *string  `json:"revoked_at,omitempty"`
+	CreatedAt     string   `json:"created_at"`
 }
 
 // CreateAppTokenRequest is the wire shape POSTed to
