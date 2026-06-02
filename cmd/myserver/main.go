@@ -16,8 +16,9 @@ import (
 	"os"
 )
 
+var cliVersion = "0.1.0"
+
 const (
-	cliVersion      = "0.1.0"
 	credentialsPath = ".myserver/credentials.json" // under $HOME
 	projectConfigFn = "myserver.json"              // in cwd
 )
