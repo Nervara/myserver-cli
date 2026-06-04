@@ -107,6 +107,16 @@ func TestMCP_ToolsList(t *testing.T) {
 	}
 }
 
+func TestRunMCP_UnknownSubcommandDoesNotStartServer(t *testing.T) {
+	err := runMCP([]string{"bogus"})
+	if err == nil {
+		t.Fatal("expected unknown subcommand error")
+	}
+	if !strings.Contains(err.Error(), "unknown mcp subcommand") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 // TestMCP_DeploymentGuidanceInDescriptions enforces that the warnings
 // AI clients depend on don't silently get edited away — these strings
 // are how an agent learns the deploy-verification workflow and known

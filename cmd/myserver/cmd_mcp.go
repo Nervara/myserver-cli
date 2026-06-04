@@ -68,9 +68,13 @@ func runMCP(args []string) error {
 			return runMCPInstall(args[1:])
 		case "uninstall":
 			return runMCPUninstall(args[1:])
+		case "list":
+			return runMCPList(args[1:])
 		case "-h", "--help", "help":
 			mcpUsage()
 			return nil
+		default:
+			return fmt.Errorf("unknown mcp subcommand %q (known: install, uninstall, list)", args[0])
 		}
 	}
 
@@ -95,6 +99,7 @@ func mcpUsage() {
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "  (no args)   Run an MCP server over stdio for an AI client.")
 	fmt.Fprintln(os.Stderr, "  install     Wire myserver into Claude Desktop / Claude Code / Cursor.")
+	fmt.Fprintln(os.Stderr, "  list        Show MCP install status for supported editors.")
 	fmt.Fprintln(os.Stderr, "  uninstall   Remove myserver entries from MCP client configs.")
 }
 

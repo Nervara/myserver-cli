@@ -132,6 +132,69 @@ func runMCPUninstall(args []string) error {
 	})
 }
 
+func runMCPList(args []string) error {
+	fs := flag.NewFlagSet("mcp list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("mcp list does not accept positional arguments")
+	}
+
+	fmt.Fprintln(os.Stderr, "MyServer MCP integrations:")
+	for _, t := range mcpTargets() {
+		path, err := t.path()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %s — unavailable: %v\n", t.label, err)
+			continue
+		}
+		status := mcpConfigStatus(path)
+		switch {
+		case status.installed:
+			fmt.Fprintf(os.Stderr, "  ✓ %s — installed (%s)\n", t.label, path)
+			if status.command != "" {
+				fmt.Fprintf(os.Stderr, "      command: %s\n", status.command)
+			}
+		case status.exists:
+			fmt.Fprintf(os.Stderr, "  - %s — config exists, myserver not installed (%s)\n", t.label, path)
+		default:
+			fmt.Fprintf(os.Stderr, "  - %s — not installed (%s)\n", t.label, path)
+		}
+	}
+	return nil
+}
+
+type mcpInstallStatus struct {
+	exists    bool
+	installed bool
+	command   string
+}
+
+func mcpConfigStatus(file string) mcpInstallStatus {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return mcpInstallStatus{exists: false}
+	}
+	status := mcpInstallStatus{exists: true}
+
+	var root map[string]any
+	if err := json.Unmarshal(data, &root); err != nil {
+		return status
+	}
+	servers, _ := root["mcpServers"].(map[string]any)
+	myserver, _ := servers["myserver"].(map[string]any)
+	if myserver == nil {
+		return status
+	}
+	status.installed = true
+	status.command, _ = myserver["command"].(string)
+	return status
+}
+
 // forEachTarget runs fn for each target whose config path is known and either
 // already exists, or — when --target was passed explicitly — whose parent dir
 // can be created. Auto-discovery (no --target) silently skips editors whose

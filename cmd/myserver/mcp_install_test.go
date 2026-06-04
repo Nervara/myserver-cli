@@ -121,6 +121,40 @@ func TestMutateMCPServersFile_RefusesInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestMCPConfigStatus_DetectsInstalledEntry(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "config.json")
+	writeConfig(t, file, map[string]any{
+		"mcpServers": map[string]any{
+			"myserver": map[string]any{
+				"command": "/bin/myserver",
+				"args":    []any{"mcp"},
+			},
+		},
+	})
+
+	status := mcpConfigStatus(file)
+	if !status.exists {
+		t.Fatal("expected config to exist")
+	}
+	if !status.installed {
+		t.Fatal("expected myserver MCP entry to be installed")
+	}
+	if status.command != "/bin/myserver" {
+		t.Fatalf("command = %q, want /bin/myserver", status.command)
+	}
+}
+
+func TestMCPConfigStatus_MissingFileIsNotInstalled(t *testing.T) {
+	status := mcpConfigStatus(filepath.Join(t.TempDir(), "missing.json"))
+	if status.exists {
+		t.Fatal("missing config should not exist")
+	}
+	if status.installed {
+		t.Fatal("missing config should not be installed")
+	}
+}
+
 func TestPromptMCPInstallTarget_SelectsNumberedTarget(t *testing.T) {
 	targets := []mcpTarget{
 		{id: "claude-desktop", label: "Claude Desktop"},
