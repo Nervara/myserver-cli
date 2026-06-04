@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -116,6 +118,60 @@ func TestMutateMCPServersFile_RefusesInvalidJSON(t *testing.T) {
 	body, _ := os.ReadFile(file)
 	if string(body) != "{ this is not json" {
 		t.Fatalf("file was modified despite error: %q", body)
+	}
+}
+
+func TestPromptMCPInstallTarget_SelectsNumberedTarget(t *testing.T) {
+	targets := []mcpTarget{
+		{id: "claude-desktop", label: "Claude Desktop"},
+		{id: "claude-code", label: "Claude Code"},
+		{id: "cursor", label: "Cursor"},
+	}
+	var out bytes.Buffer
+
+	got, ok, err := promptMCPInstallTarget(strings.NewReader("2\n"), &out, targets)
+	if err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected target selection")
+	}
+	if got != "claude-code" {
+		t.Fatalf("target = %q, want claude-code", got)
+	}
+	if !strings.Contains(out.String(), "1) Claude Desktop") ||
+		!strings.Contains(out.String(), "2) Claude Code") ||
+		!strings.Contains(out.String(), "3) Cursor") {
+		t.Fatalf("menu missing targets:\n%s", out.String())
+	}
+}
+
+func TestPromptMCPInstallTarget_SelectsTargetID(t *testing.T) {
+	targets := []mcpTarget{
+		{id: "claude-code", label: "Claude Code"},
+		{id: "cursor", label: "Cursor"},
+	}
+
+	got, ok, err := promptMCPInstallTarget(strings.NewReader("cursor\n"), &bytes.Buffer{}, targets)
+	if err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if !ok || got != "cursor" {
+		t.Fatalf("selection = %q, %v; want cursor, true", got, ok)
+	}
+}
+
+func TestPromptMCPInstallTarget_EnterSkips(t *testing.T) {
+	got, ok, err := promptMCPInstallTarget(
+		strings.NewReader("\n"),
+		&bytes.Buffer{},
+		[]mcpTarget{{id: "claude-code", label: "Claude Code"}},
+	)
+	if err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if ok || got != "" {
+		t.Fatalf("selection = %q, %v; want empty, false", got, ok)
 	}
 }
 
