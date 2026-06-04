@@ -39,18 +39,18 @@ func TestDetectBuildPack(t *testing.T) {
 
 func TestSanitizeAppName(t *testing.T) {
 	cases := map[string]string{
-		"My Cool App!":         "my-cool-app",
-		"hello-world":          "hello-world",
-		"  spaces  ":           "spaces",
-		"weird@@@@chars":       "weird-chars",
-		"":                     "",
-		"   ":                  "",
-		"-leading-dash":        "leading-dash",
-		"trailing.":            "trailing",
-		"UPPERCASE":            "uppercase",
-		"with.dots_and-stuff":  "with.dots_and-stuff",
-		"a___multiple___wins":  "a___multiple___wins",
-		"Running an app v2.0":  "running-an-app-v2.0",
+		"My Cool App!":        "my-cool-app",
+		"hello-world":         "hello-world",
+		"  spaces  ":          "spaces",
+		"weird@@@@chars":      "weird-chars",
+		"":                    "",
+		"   ":                 "",
+		"-leading-dash":       "leading-dash",
+		"trailing.":           "trailing",
+		"UPPERCASE":           "uppercase",
+		"with.dots_and-stuff": "with.dots_and-stuff",
+		"a___multiple___wins": "a___multiple___wins",
+		"Running an app v2.0": "running-an-app-v2.0",
 	}
 	for in, want := range cases {
 		if got := sanitizeAppName(in); got != want {

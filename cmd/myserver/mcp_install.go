@@ -36,9 +36,9 @@ type mcpServerEntry struct {
 
 // mcpTarget is one editor we know how to install into.
 type mcpTarget struct {
-	id     string                            // CLI flag value: "claude-desktop", "claude-code", "cursor"
-	label  string                            // user-facing name in messages
-	path   func() (string, error)            // returns the config file path for this OS
+	id     string                 // CLI flag value: "claude-desktop", "claude-code", "cursor"
+	label  string                 // user-facing name in messages
+	path   func() (string, error) // returns the config file path for this OS
 	mutate func(file string, e mcpServerEntry, remove bool) error
 }
 

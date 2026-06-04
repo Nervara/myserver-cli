@@ -21,8 +21,10 @@
 
 const https = require("node:https");
 const crypto = require("node:crypto");
+const readline = require("node:readline");
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { pipeline } = require("node:stream");
 const { promisify } = require("node:util");
 const streamPipeline = promisify(pipeline);
@@ -124,6 +126,103 @@ function log(msg) {
   console.error(`${prefix} ${msg}`);
 }
 
+function isTruthy(value) {
+  return /^(1|true|yes|y)$/i.test(String(value || "").trim());
+}
+
+function isFalsey(value) {
+  return /^(0|false|no|n)$/i.test(String(value || "").trim());
+}
+
+function isGlobalInstall(env = process.env) {
+  return env.npm_config_global === "true" || env.npm_config_location === "global";
+}
+
+function shouldOfferMCPInstall({
+  env = process.env,
+  stdinTTY = process.stdin.isTTY,
+  stdoutTTY = process.stdout.isTTY,
+} = {}) {
+  if (env.MYSERVER_CLI_INSTALL_MCP) return false;
+  if (env.CI || env.npm_config_yes === "true") return false;
+  return isGlobalInstall(env) && stdinTTY === true && stdoutTTY === true;
+}
+
+function parseMCPInstallChoice(answer) {
+  return /^(y|yes)$/i.test(String(answer || "").trim());
+}
+
+function formatMCPSkippedMessage(reason) {
+  const why = reason ? `\n| Reason: ${reason}` : "";
+  return [
+    "",
+    "+------------------------------------------------------------+",
+    "| MyServer MCP integration was not installed                 |",
+    "+------------------------------------------------------------+",
+    "| The CLI is ready. To add MCP to your AI editor later, run: |",
+    "|                                                            |",
+    "|   myserver mcp install                                     |",
+    "|                                                            |",
+    "| Manual MCP config:                                         |",
+    "|   { \"command\": \"myserver\", \"args\": [\"mcp\"] }          |",
+    `${why}`,
+    "+------------------------------------------------------------+",
+    "",
+  ].join("\n");
+}
+
+function askMCPInstall() {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+
+  return new Promise((resolve) => {
+    rl.question("\nInstall MyServer MCP integration for your AI editor now? [y/N] ", (answer) => {
+      rl.close();
+      resolve(parseMCPInstallChoice(answer));
+    });
+  });
+}
+
+function installMCP(binPath) {
+  const result = spawnSync(binPath, ["mcp", "install"], {
+    stdio: "inherit",
+    shell: false,
+  });
+  return result.status === 0;
+}
+
+async function maybeInstallMCP(binPath) {
+  const forced = process.env.MYSERVER_CLI_INSTALL_MCP;
+  if (forced && isTruthy(forced)) {
+    if (!installMCP(binPath)) {
+      log("MCP install failed. You can retry with: myserver mcp install");
+    }
+    return;
+  }
+  if (forced && isFalsey(forced)) {
+    console.error(formatMCPSkippedMessage("MYSERVER_CLI_INSTALL_MCP disabled it"));
+    return;
+  }
+
+  if (shouldOfferMCPInstall()) {
+    if (await askMCPInstall()) {
+      if (!installMCP(binPath)) {
+        log("MCP install failed. You can retry with: myserver mcp install");
+      }
+      return;
+    }
+    console.error(formatMCPSkippedMessage("you chose not to install it now"));
+    return;
+  }
+
+  const reason = isGlobalInstall()
+    ? "npm is running non-interactively"
+    : "this was not a global npm install";
+  console.error(formatMCPSkippedMessage(reason));
+}
+
 // ── Main ──────────────────────────────────────────────────────────────
 
 async function main() {
@@ -144,6 +243,7 @@ async function main() {
   // Skip if binary already present (reinstall / offline scenario).
   if (fs.existsSync(binPath)) {
     log(`${plat.binName} already present, skipping download.`);
+    await maybeInstallMCP(binPath);
     return;
   }
 
@@ -181,8 +281,17 @@ async function main() {
   }
 
   log(`installed ${plat.binName} (${version})`);
+  await maybeInstallMCP(binPath);
 }
 
-main().catch((err) => {
-  log(`unexpected error: ${err.message}`);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    log(`unexpected error: ${err.message}`);
+  });
+}
+
+module.exports = {
+  formatMCPSkippedMessage,
+  parseMCPInstallChoice,
+  shouldOfferMCPInstall,
+};

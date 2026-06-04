@@ -118,9 +118,9 @@ func TestMCP_DeploymentGuidanceInDescriptions(t *testing.T) {
 	}
 
 	wants := []struct {
-		tool    string
+		tool     string
 		mustHave string
-		why     string
+		why      string
 	}{
 		{"deploy_app", "cutover-orphan", "deploy_app must warn about the cutover-orphan bug on dockerimage redeploys"},
 		{"deploy_app", "list_deployments", "deploy_app must steer agents to the verification workflow"},

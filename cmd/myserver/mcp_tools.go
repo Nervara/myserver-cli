@@ -21,10 +21,10 @@ import (
 
 // toolSpec is what we publish via tools/list and dispatch on for tools/call.
 type toolSpec struct {
-	Name        string                                                  `json:"name"`
-	Description string                                                  `json:"description"`
-	InputSchema map[string]any                                          `json:"inputSchema"`
-	Annotations map[string]any                                          `json:"annotations,omitempty"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	InputSchema map[string]any `json:"inputSchema"`
+	Annotations map[string]any `json:"annotations,omitempty"`
 	handler     func(api *apiClient, args json.RawMessage) (string, error)
 }
 
@@ -103,7 +103,7 @@ var mcpTools = []toolSpec{
 		handler:     handleGenerateFQDN,
 	},
 	{
-		Name: "create_app",
+		Name:        "create_app",
 		Description: "Use when the user wants to register a NEW application in a team's environment (first-time onboarding, scaffolding a fresh project). Required: name, environment_id, build_pack. Common: git_repository, fqdn, ports_exposes, server_id. Build-pack-specific fields cover Dockerfile / docker-compose / docker-image flows. After creation, the next steps are: bind a working directory with `myserver init --app=<id>` and deploy with `myserver up` (or call the `set_env_var` tool first if env vars are needed). Do NOT use this to redeploy an existing app — call `deploy` MCP tools for that.\n\nIF THE APP NEEDS TO CALL MYSERVER AT RUNTIME (e.g. multi-tenant SaaS adding customer custom domains, scheduled exports, programmatic redeploys): after create_app, also call create_app_token with auto_inject=true and the appropriate scopes. The next deploy will inject MYSERVER_API_URL / MYSERVER_APP_ID / MYSERVER_APP_TOKEN env vars. Use app_runtime_env to see the full runtime contract for an app while writing code against it. For the full multi-tenant-custom-domain blueprint (code snippets + DNS instructions you must show the customer's tenants), call saas_custom_domain_recipe first.",
 		InputSchema: schema(
 			map[string]any{
@@ -177,7 +177,7 @@ var mcpTools = []toolSpec{
 		handler:     handleListServers,
 	},
 	{
-		Name: "list_deployments",
+		Name:        "list_deployments",
 		Description: "List recent deployments for an application, newest first. Default limit is 5. Use this to verify a `myserver up` / deploy_app actually finished. Status meanings: queued (just enqueued, not picked up yet), in_progress (worker is building/deploying), finished (success — container should be live), failed (build or deploy error — call tail_deployment_logs to see why). A 'finished' status only means the pipeline completed; it does NOT guarantee the container is actually running (see cutover-orphan note on deploy_app). Always cross-check with get_app (status field) + tail_app_logs (404 = no container) after a deploy.",
 		InputSchema: schema(
 			map[string]any{
@@ -347,7 +347,7 @@ var mcpTools = []toolSpec{
 		handler:     handleDeleteSQLite,
 	},
 	{
-		Name: "deploy_app",
+		Name:        "deploy_app",
 		Description: "Trigger a new deployment of an existing app using its currently-configured source (git repo OR last-pushed registry image). Mutating: enqueues an asynq job that runs the 8-stage pipeline. Returns immediately with the new deployment_id — does NOT wait for build to finish.\n\nPOST-DEPLOY VERIFICATION WORKFLOW (always do all of this):\n  1. list_deployments(app_id, limit=5) — confirm status progresses queued → in_progress → finished\n  2. If status=failed: tail_deployment_logs(app_id, deployment_id) for the build error\n  3. If status=finished: tail_app_logs(app_id, lines=80) to confirm container is actually serving (404 here = container did not start, see tail_app_logs description)\n  4. curl the FQDN's /healthz or root path to confirm end-to-end\n\n⚠️ KNOWN BUG — cutover-orphan on dockerimage redeploys: calling deploy_app on a build_pack=dockerimage app immediately after a `myserver up` can stop the NEW container during orphan cleanup. Symptoms: FQDN→502, tail_app_logs→'no container found', get_app still says status=running. Workaround: re-run `myserver up` from the user's local directory (don't just retry deploy_app — same code path). Doesn't affect railpack/dockerfile/dockercompose/static.\n\nFor source-from-local-disk uploads, the user runs `myserver up` from their CLI; this MCP tool re-runs the SAME pipeline against whatever source the app is already configured with.\n\nIf the app has an auto_inject service token configured (see create_app_token), the deploy pipeline will splice MYSERVER_API_URL + MYSERVER_APP_ID + MYSERVER_APP_TOKEN into the container env at this stage. Call app_runtime_env after deploy to confirm what was injected.",
 		InputSchema: schema(
 			map[string]any{
@@ -359,7 +359,7 @@ var mcpTools = []toolSpec{
 		handler:     handleDeployApp,
 	},
 	{
-		Name: "restart_app",
+		Name:        "restart_app",
 		Description: "Restart an application's containers on a given server. Mutating but reversible (containers come back with the same image).",
 		InputSchema: schema(
 			map[string]any{
@@ -410,7 +410,7 @@ var mcpTools = []toolSpec{
 		handler:     handleDeleteApp,
 	},
 	{
-		Name: "app_runtime_env",
+		Name:        "app_runtime_env",
 		Description: "DEVELOPER REFERENCE: What env vars will my container have at runtime?\n\nCall this when you're writing app code and need to know which environment variables myserver will populate. Returns:\n\n  • Auto-injected by pipeline (if configured):\n      MYSERVER_API_URL    — base URL to call myserver back at\n      MYSERVER_APP_ID     — your app's numeric id\n      MYSERVER_APP_TOKEN  — bearer token (mst_…) for /api/v1/applications/{id}/{domains,deployments,...}\n      LOG_INGEST_URL      — POST JSONL logs here\n      LOG_INGEST_TOKEN    — bearer token for log ingest\n  • SQLite attachments — file path inside the container, plus per-driver connection-string suggestions (sqlite:/// for Python, file:// for Go, jdbc:sqlite:// for Java). The env var is NOT auto-injected by design; pick the format your driver wants and set DATABASE_URL via set_env_var.\n  • Counts of user-defined env vars (use list_env_vars for keys+values).\n\nTo enable MYSERVER_APP_TOKEN auto-injection, mint an app service token with create_app_token(auto_inject=true). To enable LOG_INGEST_*, flip platform_logging_enabled via the UI (or the platform-logging tool when it ships).\n\nSafe to call repeatedly — read-only.",
 		InputSchema: schema(
 			map[string]any{
@@ -510,7 +510,7 @@ var mcpTools = []toolSpec{
 		handler:     handleRevokeAppToken,
 	},
 	{
-		Name: "create_sqlite_resource",
+		Name:        "create_sqlite_resource",
 		Description: "Attach a managed SQLite database to an application. Creates a persistent Docker volume at the file's parent directory (e.g. /data) on the app's destination server, and auto-enqueues a redeploy so the volume mount takes effect. Single-replica apps only — SQLite has no replication.\n\n⚠️ NO ENV VAR AUTO-INJECTION (by design): creating the resource does NOT set DATABASE_URL or any env var on the app. This is deliberate — the right SQLite URL depends on the language/driver: Java JDBC wants 'jdbc:sqlite:/data/x.db', Python/SQLAlchemy wants 'sqlite:///data/x.db', Go database/sql wants 'file:/data/x.db?cache=shared', Bun/Node want the bare path. Picking one wrong by default has caused customer outages (Spring Boot HikariCP rejecting sqlite:/// URLs). The resource carries `env_var_key` + `connection_string` as suggestions; the customer chooses the format that fits their stack and calls set_env_var themselves.\n\nCorrect workflow: create_app → create_sqlite_resource → set_env_var(app_id, key='DATABASE_URL', value='<driver-specific>', is_literal=true) → deploy_app / `myserver up`. Without the set_env_var step, the volume mounts and the file path is reachable inside /data, but the app must hard-code or build the connection string from a known constant.",
 		InputSchema: schema(
 			map[string]any{

@@ -208,4 +208,3 @@ func resolveAppTarget(teamID, appID int64, apiURL string) (*apiClient, int64, er
 	}
 	return api, appID, nil
 }
-
