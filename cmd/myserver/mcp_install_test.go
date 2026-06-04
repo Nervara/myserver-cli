@@ -156,9 +156,15 @@ func TestMCPConfigStatus_MissingFileIsNotInstalled(t *testing.T) {
 }
 
 func TestPromptMCPInstallTarget_SelectsNumberedTarget(t *testing.T) {
+	installedConfig := filepath.Join(t.TempDir(), "claude.json")
+	writeConfig(t, installedConfig, map[string]any{
+		"mcpServers": map[string]any{
+			"myserver": map[string]any{"command": "/bin/myserver"},
+		},
+	})
 	targets := []mcpTarget{
 		{id: "claude-desktop", label: "Claude Desktop"},
-		{id: "claude-code", label: "Claude Code"},
+		{id: "claude-code", label: "Claude Code", path: func() (string, error) { return installedConfig, nil }},
 		{id: "cursor", label: "Cursor"},
 	}
 	var out bytes.Buffer
@@ -175,6 +181,7 @@ func TestPromptMCPInstallTarget_SelectsNumberedTarget(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "1) Claude Desktop") ||
 		!strings.Contains(out.String(), "2) Claude Code") ||
+		!strings.Contains(out.String(), "installed") ||
 		!strings.Contains(out.String(), "3) Cursor") {
 		t.Fatalf("menu missing targets:\n%s", out.String())
 	}
@@ -238,6 +245,46 @@ func TestPromptMCPInstallTarget_EnterSkips(t *testing.T) {
 	}
 	if ok || len(got) != 0 {
 		t.Fatalf("selection = %q, %v; want empty, false", got, ok)
+	}
+}
+
+func TestResolveMCPInstallTargets_InteractivePromptsEvenWhenInstalled(t *testing.T) {
+	got, ok, err := resolveMCPInstallTargets(
+		"",
+		false,
+		true,
+		strings.NewReader("all\n"),
+		&bytes.Buffer{},
+		[]mcpTarget{
+			{id: "claude-code", label: "Claude Code"},
+			{id: "cursor", label: "Cursor"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !ok || strings.Join(got, ",") != "claude-code,cursor" {
+		t.Fatalf("selection = %q, %v; want claude-code,cursor, true", got, ok)
+	}
+}
+
+func TestResolveMCPInstallTargets_ExplicitTargetSkipsPrompt(t *testing.T) {
+	got, ok, err := resolveMCPInstallTargets(
+		"cursor",
+		false,
+		true,
+		strings.NewReader("all\n"),
+		&bytes.Buffer{},
+		[]mcpTarget{
+			{id: "claude-code", label: "Claude Code"},
+			{id: "cursor", label: "Cursor"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !ok || strings.Join(got, ",") != "cursor" {
+		t.Fatalf("selection = %q, %v; want cursor, true", got, ok)
 	}
 }
 
