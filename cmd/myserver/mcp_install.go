@@ -13,11 +13,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -193,6 +195,15 @@ func forEachTarget(targetID string, dryRun bool, fn func(t mcpTarget, path strin
 	}
 
 	if anyApplied == 0 && targetID == "" {
+		if !dryRun && isInteractiveTerminal() {
+			chosen, ok, err := promptMCPInstallTarget(os.Stdin, os.Stderr, all)
+			if err != nil {
+				return err
+			}
+			if ok {
+				return forEachTarget(chosen, dryRun, fn)
+			}
+		}
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "No supported MCP editors detected. Pass --target=<editor> to force install,")
 		fmt.Fprintln(os.Stderr, "or install one of: Claude Desktop, Claude Code, Cursor.")
@@ -203,6 +214,51 @@ func forEachTarget(targetID string, dryRun bool, fn func(t mcpTarget, path strin
 		fmt.Fprintln(os.Stderr, "Restart your editor to load the new MCP server.")
 	}
 	return firstErr
+}
+
+func isInteractiveTerminal() bool {
+	in, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	out, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return (in.Mode()&os.ModeCharDevice) != 0 && (out.Mode()&os.ModeCharDevice) != 0
+}
+
+func promptMCPInstallTarget(in io.Reader, out io.Writer, targets []mcpTarget) (string, bool, error) {
+	fmt.Fprintln(out, "")
+	fmt.Fprintln(out, "No supported MCP editor config was detected.")
+	fmt.Fprintln(out, "Choose where to install the MyServer MCP server:")
+	for i, t := range targets {
+		fmt.Fprintf(out, "  %d) %s (%s)\n", i+1, t.label, t.id)
+	}
+	fmt.Fprintln(out, "  Enter) skip for now")
+	fmt.Fprint(out, "Install target: ")
+
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", false, err
+	}
+	answer := strings.TrimSpace(line)
+	if answer == "" {
+		return "", false, nil
+	}
+
+	for i, t := range targets {
+		if answer == fmt.Sprintf("%d", i+1) || strings.EqualFold(answer, t.id) {
+			return t.id, true, nil
+		}
+	}
+
+	ids := make([]string, len(targets))
+	for i, t := range targets {
+		ids[i] = t.id
+	}
+	sort.Strings(ids)
+	return "", false, fmt.Errorf("unknown install target %q (known: %s)", answer, strings.Join(ids, ", "))
 }
 
 // mcpResolveBinaryPath returns the absolute path of the running myserver
