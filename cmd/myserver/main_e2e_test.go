@@ -268,12 +268,12 @@ func TestE2E_UpEndToEnd(t *testing.T) {
 // no separate /deploy call.
 func TestE2E_UpFromSource(t *testing.T) {
 	var (
-		mu                                                    sync.Mutex
-		gotSourceTarball, gotDeployCall, gotPatch             bool
-		gotBuildTarball                                       bool
-		gotLogPolls                                           int
-		statusSequence                                        = []string{"queued", "in_progress", "in_progress", "finished"}
-		statusIdx                                             int
+		mu                                        sync.Mutex
+		gotSourceTarball, gotDeployCall, gotPatch bool
+		gotBuildTarball                           bool
+		gotLogPolls                               int
+		statusSequence                            = []string{"queued", "in_progress", "in_progress", "finished"}
+		statusIdx                                 int
 	)
 
 	mux := http.NewServeMux()

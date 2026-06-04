@@ -14,6 +14,8 @@ bun add -g @serverops/myserver-cli
 
 The postinstall script detects your OS + arch and downloads the matching prebuilt binary from GitHub releases. No native dependencies, no per-platform packages.
 
+For global installs, the installer can also wire the MCP server into supported AI editors. If npm is running interactively, it asks whether to run `myserver mcp install`; otherwise it prints the command to run later.
+
 **Env overrides** (for testing / custom mirrors):
 
 ```bash
@@ -22,6 +24,12 @@ MYSERVER_CLI_DOWNLOAD_BASE=http://localhost:8080 npm install -g @serverops/myser
 
 # Pin a specific version tag
 MYSERVER_CLI_VERSION=v0.2.0 npm install -g @serverops/myserver-cli
+
+# Install MCP integration without prompting
+MYSERVER_CLI_INSTALL_MCP=1 npm install -g @serverops/myserver-cli --foreground-scripts
+
+# Skip MCP integration explicitly
+MYSERVER_CLI_INSTALL_MCP=0 npm install -g @serverops/myserver-cli
 ```
 
 Standalone binary downloads are attached to every [GitHub release](https://github.com/Nervara/myserver-cli/releases) for `darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`, and `windows-amd64`.

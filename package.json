@@ -24,12 +24,13 @@
   },
   "files": [
     "bin/",
-    "scripts/",
+    "scripts/postinstall.js",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "test:postinstall": "node --test scripts/postinstall.test.js"
   },
   "engines": {
     "node": ">=14"
