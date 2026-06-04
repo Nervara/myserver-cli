@@ -129,15 +129,15 @@ func TestPromptMCPInstallTarget_SelectsNumberedTarget(t *testing.T) {
 	}
 	var out bytes.Buffer
 
-	got, ok, err := promptMCPInstallTarget(strings.NewReader("2\n"), &out, targets)
+	got, ok, err := promptMCPInstallTargets(strings.NewReader("2\n"), &out, targets)
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
 	if !ok {
 		t.Fatal("expected target selection")
 	}
-	if got != "claude-code" {
-		t.Fatalf("target = %q, want claude-code", got)
+	if strings.Join(got, ",") != "claude-code" {
+		t.Fatalf("targets = %q, want claude-code", got)
 	}
 	if !strings.Contains(out.String(), "1) Claude Desktop") ||
 		!strings.Contains(out.String(), "2) Claude Code") ||
@@ -152,17 +152,49 @@ func TestPromptMCPInstallTarget_SelectsTargetID(t *testing.T) {
 		{id: "cursor", label: "Cursor"},
 	}
 
-	got, ok, err := promptMCPInstallTarget(strings.NewReader("cursor\n"), &bytes.Buffer{}, targets)
+	got, ok, err := promptMCPInstallTargets(strings.NewReader("cursor\n"), &bytes.Buffer{}, targets)
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
-	if !ok || got != "cursor" {
+	if !ok || strings.Join(got, ",") != "cursor" {
 		t.Fatalf("selection = %q, %v; want cursor, true", got, ok)
 	}
 }
 
+func TestPromptMCPInstallTarget_SelectsMultipleTargets(t *testing.T) {
+	targets := []mcpTarget{
+		{id: "claude-desktop", label: "Claude Desktop"},
+		{id: "claude-code", label: "Claude Code"},
+		{id: "cursor", label: "Cursor"},
+	}
+
+	got, ok, err := promptMCPInstallTargets(strings.NewReader("1, cursor\n"), &bytes.Buffer{}, targets)
+	if err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if !ok || strings.Join(got, ",") != "claude-desktop,cursor" {
+		t.Fatalf("selection = %q, %v; want claude-desktop,cursor, true", got, ok)
+	}
+}
+
+func TestPromptMCPInstallTarget_SelectsAllTargets(t *testing.T) {
+	targets := []mcpTarget{
+		{id: "claude-desktop", label: "Claude Desktop"},
+		{id: "claude-code", label: "Claude Code"},
+		{id: "cursor", label: "Cursor"},
+	}
+
+	got, ok, err := promptMCPInstallTargets(strings.NewReader("all\n"), &bytes.Buffer{}, targets)
+	if err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if !ok || strings.Join(got, ",") != "claude-desktop,claude-code,cursor" {
+		t.Fatalf("selection = %q, %v; want all targets, true", got, ok)
+	}
+}
+
 func TestPromptMCPInstallTarget_EnterSkips(t *testing.T) {
-	got, ok, err := promptMCPInstallTarget(
+	got, ok, err := promptMCPInstallTargets(
 		strings.NewReader("\n"),
 		&bytes.Buffer{},
 		[]mcpTarget{{id: "claude-code", label: "Claude Code"}},
@@ -170,7 +202,7 @@ func TestPromptMCPInstallTarget_EnterSkips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
-	if ok || got != "" {
+	if ok || len(got) != 0 {
 		t.Fatalf("selection = %q, %v; want empty, false", got, ok)
 	}
 }
