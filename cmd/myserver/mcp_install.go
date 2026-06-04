@@ -196,12 +196,12 @@ func forEachTarget(targetID string, dryRun bool, fn func(t mcpTarget, path strin
 
 	if anyApplied == 0 && targetID == "" {
 		if !dryRun && isInteractiveTerminal() {
-			chosen, ok, err := promptMCPInstallTarget(os.Stdin, os.Stderr, all)
+			chosen, ok, err := promptMCPInstallTargets(os.Stdin, os.Stderr, all)
 			if err != nil {
 				return err
 			}
 			if ok {
-				return forEachTarget(chosen, dryRun, fn)
+				return forTargetIDs(chosen, dryRun, fn)
 			}
 		}
 		fmt.Fprintln(os.Stderr, "")
@@ -209,6 +209,52 @@ func forEachTarget(targetID string, dryRun bool, fn func(t mcpTarget, path strin
 		fmt.Fprintln(os.Stderr, "or install one of: Claude Desktop, Claude Code, Cursor.")
 		return nil
 	}
+	if !dryRun && anyApplied > 0 {
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "Restart your editor to load the new MCP server.")
+	}
+	return firstErr
+}
+
+func forTargetIDs(targetIDs []string, dryRun bool, fn func(t mcpTarget, path string) error) error {
+	all := mcpTargets()
+	var wanted []mcpTarget
+	for _, id := range targetIDs {
+		for _, t := range all {
+			if t.id == id {
+				wanted = append(wanted, t)
+				break
+			}
+		}
+	}
+
+	var firstErr error
+	verb := "Installing"
+	if dryRun {
+		verb = "Previewing"
+	}
+	fmt.Fprintf(os.Stderr, "%s myserver MCP integration:\n", verb)
+
+	var anyApplied int
+	for _, t := range wanted {
+		path, err := t.path()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %s — %v\n", t.label, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := fn(t, path); err != nil {
+			fmt.Fprintf(os.Stderr, "  ✗ %s — %v\n", t.label, err)
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		anyApplied++
+	}
+
 	if !dryRun && anyApplied > 0 {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Restart your editor to load the new MCP server.")
@@ -228,37 +274,67 @@ func isInteractiveTerminal() bool {
 	return (in.Mode()&os.ModeCharDevice) != 0 && (out.Mode()&os.ModeCharDevice) != 0
 }
 
-func promptMCPInstallTarget(in io.Reader, out io.Writer, targets []mcpTarget) (string, bool, error) {
+func promptMCPInstallTargets(in io.Reader, out io.Writer, targets []mcpTarget) ([]string, bool, error) {
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "No supported MCP editor config was detected.")
 	fmt.Fprintln(out, "Choose where to install the MyServer MCP server:")
 	for i, t := range targets {
 		fmt.Fprintf(out, "  %d) %s (%s)\n", i+1, t.label, t.id)
 	}
+	fmt.Fprintln(out, "  all) install into every target")
 	fmt.Fprintln(out, "  Enter) skip for now")
-	fmt.Fprint(out, "Install target: ")
+	fmt.Fprint(out, "Install targets (comma or space separated): ")
 
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return "", false, err
+		return nil, false, err
 	}
 	answer := strings.TrimSpace(line)
 	if answer == "" {
-		return "", false, nil
+		return nil, false, nil
 	}
 
+	if strings.EqualFold(answer, "all") {
+		ids := make([]string, len(targets))
+		for i, t := range targets {
+			ids[i] = t.id
+		}
+		return ids, true, nil
+	}
+
+	byToken := map[string]string{}
 	for i, t := range targets {
-		if answer == fmt.Sprintf("%d", i+1) || strings.EqualFold(answer, t.id) {
-			return t.id, true, nil
+		byToken[fmt.Sprintf("%d", i+1)] = t.id
+		byToken[strings.ToLower(t.id)] = t.id
+	}
+
+	seen := map[string]bool{}
+	var selected []string
+	for _, token := range strings.FieldsFunc(answer, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	}) {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		id, ok := byToken[strings.ToLower(token)]
+		if !ok {
+			ids := make([]string, len(targets))
+			for i, t := range targets {
+				ids[i] = t.id
+			}
+			sort.Strings(ids)
+			return nil, false, fmt.Errorf("unknown install target %q (known: %s, all)", token, strings.Join(ids, ", "))
+		}
+		if !seen[id] {
+			seen[id] = true
+			selected = append(selected, id)
 		}
 	}
-
-	ids := make([]string, len(targets))
-	for i, t := range targets {
-		ids[i] = t.id
+	if len(selected) == 0 {
+		return nil, false, nil
 	}
-	sort.Strings(ids)
-	return "", false, fmt.Errorf("unknown install target %q (known: %s)", answer, strings.Join(ids, ", "))
+	return selected, true, nil
 }
 
 // mcpResolveBinaryPath returns the absolute path of the running myserver
