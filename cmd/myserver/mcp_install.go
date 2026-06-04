@@ -93,6 +93,23 @@ func runMCPInstall(args []string) error {
 		return err
 	}
 	entry := mcpServerEntry{Command: bin, Args: []string{"mcp"}}
+	selected, ok, err := resolveMCPInstallTargets(*target, *dryRun, isInteractiveTerminal(), os.Stdin, os.Stderr, mcpTargets())
+	if err != nil {
+		return err
+	}
+	if ok {
+		return forTargetIDs(selected, *dryRun, func(t mcpTarget, path string) error {
+			if *dryRun {
+				fmt.Fprintf(os.Stderr, "  [dry-run] would update %s (%s)\n", t.label, path)
+				return nil
+			}
+			if err := t.mutate(path, entry, false); err != nil {
+				return fmt.Errorf("%s: %w", t.label, err)
+			}
+			fmt.Fprintf(os.Stderr, "  ✓ %s — %s\n", t.label, path)
+			return nil
+		})
+	}
 
 	return forEachTarget(*target, *dryRun, func(t mcpTarget, path string) error {
 		if *dryRun {
@@ -105,6 +122,26 @@ func runMCPInstall(args []string) error {
 		fmt.Fprintf(os.Stderr, "  ✓ %s — %s\n", t.label, path)
 		return nil
 	})
+}
+
+func resolveMCPInstallTargets(targetID string, dryRun bool, interactive bool, in io.Reader, out io.Writer, targets []mcpTarget) ([]string, bool, error) {
+	if targetID != "" {
+		for _, t := range targets {
+			if t.id == targetID {
+				return []string{targetID}, true, nil
+			}
+		}
+		ids := make([]string, len(targets))
+		for i, t := range targets {
+			ids[i] = t.id
+		}
+		sort.Strings(ids)
+		return nil, false, fmt.Errorf("unknown --target %q (known: %s)", targetID, strings.Join(ids, ", "))
+	}
+	if dryRun || !interactive {
+		return nil, false, nil
+	}
+	return promptMCPInstallTargets(in, out, targets)
 }
 
 func runMCPUninstall(args []string) error {
@@ -258,15 +295,6 @@ func forEachTarget(targetID string, dryRun bool, fn func(t mcpTarget, path strin
 	}
 
 	if anyApplied == 0 && targetID == "" {
-		if !dryRun && isInteractiveTerminal() {
-			chosen, ok, err := promptMCPInstallTargets(os.Stdin, os.Stderr, all)
-			if err != nil {
-				return err
-			}
-			if ok {
-				return forTargetIDs(chosen, dryRun, fn)
-			}
-		}
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "No supported MCP editors detected. Pass --target=<editor> to force install,")
 		fmt.Fprintln(os.Stderr, "or install one of: Claude Desktop, Claude Code, Cursor.")
@@ -339,10 +367,9 @@ func isInteractiveTerminal() bool {
 
 func promptMCPInstallTargets(in io.Reader, out io.Writer, targets []mcpTarget) ([]string, bool, error) {
 	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "No supported MCP editor config was detected.")
 	fmt.Fprintln(out, "Choose where to install the MyServer MCP server:")
 	for i, t := range targets {
-		fmt.Fprintf(out, "  %d) %s (%s)\n", i+1, t.label, t.id)
+		fmt.Fprintf(out, "  %d) %s (%s) — %s\n", i+1, t.label, t.id, mcpTargetStatusLabel(t))
 	}
 	fmt.Fprintln(out, "  all) install into every target")
 	fmt.Fprintln(out, "  Enter) skip for now")
@@ -398,6 +425,24 @@ func promptMCPInstallTargets(in io.Reader, out io.Writer, targets []mcpTarget) (
 		return nil, false, nil
 	}
 	return selected, true, nil
+}
+
+func mcpTargetStatusLabel(t mcpTarget) string {
+	if t.path == nil {
+		return "not installed"
+	}
+	path, err := t.path()
+	if err != nil {
+		return fmt.Sprintf("unavailable: %v", err)
+	}
+	status := mcpConfigStatus(path)
+	if status.installed {
+		return "installed"
+	}
+	if status.exists {
+		return "config exists, myserver not installed"
+	}
+	return "not installed"
 }
 
 // mcpResolveBinaryPath returns the absolute path of the running myserver
