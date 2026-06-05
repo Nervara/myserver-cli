@@ -120,6 +120,22 @@ func TestMCP_ToolsList(t *testing.T) {
 	}
 }
 
+func TestMCP_ToolCatalogContract(t *testing.T) {
+	report := validateMCPToolCatalog(mcpToolDescriptors())
+	if !report.OK {
+		t.Fatalf("MCP tool catalog invalid:\n%s", strings.Join(report.Issues, "\n"))
+	}
+	if report.ToolCount < 8 {
+		t.Fatalf("tool count = %d, want at least 8", report.ToolCount)
+	}
+	if report.DuplicateNames != 0 {
+		t.Fatalf("duplicate names = %d", report.DuplicateNames)
+	}
+	if report.InvalidSchemas != 0 {
+		t.Fatalf("invalid schemas = %d", report.InvalidSchemas)
+	}
+}
+
 func TestRunMCP_UnknownSubcommandDoesNotStartServer(t *testing.T) {
 	err := runMCP([]string{"bogus"})
 	if err == nil {
