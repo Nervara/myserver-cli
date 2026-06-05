@@ -65,6 +65,8 @@ type rpcError struct {
 func runMCP(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
+		case "doctor":
+			return runMCPDoctor(args[1:])
 		case "install":
 			return runMCPInstall(args[1:])
 		case "uninstall":
@@ -75,7 +77,7 @@ func runMCP(args []string) error {
 			mcpUsage()
 			return nil
 		default:
-			return fmt.Errorf("unknown mcp subcommand %q (known: install, uninstall, list)", args[0])
+			return fmt.Errorf("unknown mcp subcommand %q (known: doctor, install, uninstall, list)", args[0])
 		}
 	}
 
@@ -99,6 +101,7 @@ func mcpUsage() {
 	fmt.Fprintln(os.Stderr, "Usage: myserver mcp [subcommand]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "  (no args)   Run an MCP server over stdio for an AI client.")
+	fmt.Fprintln(os.Stderr, "  doctor      Validate the MCP tool catalog.")
 	fmt.Fprintln(os.Stderr, "  install     Wire myserver into Claude Desktop / Claude Code / Cursor.")
 	fmt.Fprintln(os.Stderr, "  list        Show MCP install status for supported editors.")
 	fmt.Fprintln(os.Stderr, "  uninstall   Remove myserver entries from MCP client configs.")

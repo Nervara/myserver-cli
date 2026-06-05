@@ -94,6 +94,9 @@ The CLI ships a [Model Context Protocol](https://modelcontextprotocol.io/) serve
 # One-shot install for popular editors
 myserver mcp install
 
+# Validate the published MCP tool catalog
+myserver mcp doctor
+
 # Or run directly (the editor spawns this on stdin/stdout)
 myserver mcp
 ```

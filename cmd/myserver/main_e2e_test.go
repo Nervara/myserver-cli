@@ -124,6 +124,23 @@ func TestE2E_HelpFlag(t *testing.T) {
 	}
 }
 
+func TestE2E_MCPDoctor(t *testing.T) {
+	stdout, stderr, code := runCLI(t, nil, nil, "mcp", "doctor")
+	if code != 0 {
+		t.Fatalf("mcp doctor exit code = %d, stderr:\n%s", code, stderr)
+	}
+	for _, want := range []string{
+		"MCP catalog OK",
+		"tools:",
+		"duplicate names: 0",
+		"invalid schemas: 0",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("mcp doctor output missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
 func TestE2E_AuthRegister(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
