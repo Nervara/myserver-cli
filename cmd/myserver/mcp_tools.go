@@ -60,6 +60,21 @@ var mcpTools = []toolSpec{
 		handler:     handleWhoami,
 	},
 	{
+		Name:        "register_user",
+		Description: "Register a new myserver user through the public /auth/register endpoint. Use for self-hosted first-user/admin bootstrap or when registration is intentionally enabled. Mutating: creates a user and personal team. Required: name, email, password. Optional: timezone. Does not return tokens to avoid leaking credentials through MCP transcripts; after registration, ask the user to run `myserver login` or use the CLI `myserver auth register` if they want credentials saved locally.",
+		InputSchema: schema(
+			map[string]any{
+				"name":     map[string]any{"type": "string", "description": "Display name for the new user"},
+				"email":    map[string]any{"type": "string", "description": "Email address for the new user"},
+				"password": map[string]any{"type": "string", "description": "Password for the new user. Registration may reject weak passwords."},
+				"timezone": map[string]any{"type": "string", "description": "Optional IANA timezone identifier, e.g. Europe/Dublin"},
+			},
+			"name", "email", "password",
+		),
+		Annotations: destructive(),
+		handler:     handleRegisterUser,
+	},
+	{
 		Name:        "list_projects",
 		Description: "List all projects in the active team. Projects contain environments which contain apps and databases.",
 		InputSchema: schema(map[string]any{}),
@@ -583,6 +598,25 @@ func handleDetectBuildPack(_ *apiClient, args json.RawMessage) (string, error) {
 		return fmt.Sprintf("build_pack=%s (detected from %s in %s)", bp, signal, dir), nil
 	}
 	return fmt.Sprintf("build_pack=%s (no Docker/compose files; railpack will auto-detect language at build time) — path=%s", bp, dir), nil
+}
+
+func handleRegisterUser(api *apiClient, args json.RawMessage) (string, error) {
+	var req RegisterUserRequest
+	if err := json.Unmarshal(args, &req); err != nil {
+		return "", fmt.Errorf("bad arguments: %w", err)
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	req.Email = strings.TrimSpace(req.Email)
+	req.Timezone = strings.TrimSpace(req.Timezone)
+	if req.Name == "" || req.Email == "" || req.Password == "" {
+		return "", fmt.Errorf("name, email, and password are required")
+	}
+	resp, err := api.registerUser(req)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Created user #%d %s <%s>. Credentials were not saved by MCP; run `myserver login --email %s` to save local CLI credentials.",
+		resp.User.ID, resp.User.Name, resp.User.Email, resp.User.Email), nil
 }
 
 // signalFileFor returns the file in dir that drove a particular detection

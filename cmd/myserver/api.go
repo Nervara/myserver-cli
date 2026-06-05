@@ -92,6 +92,13 @@ type loginResp struct {
 	} `json:"user"`
 }
 
+type RegisterUserRequest struct {
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
+	Timezone string `json:"timezone,omitempty"`
+}
+
 func apiLogin(apiURL, email, password string) (*loginResp, error) {
 	c := &apiClient{url: strings.TrimRight(apiURL, "/"), hc: &http.Client{Timeout: 15 * time.Second}}
 	var r loginResp
@@ -101,6 +108,29 @@ func apiLogin(apiURL, email, password string) (*loginResp, error) {
 	}
 	if r.Tokens.AccessToken == "" {
 		return nil, fmt.Errorf("login: server returned no access token")
+	}
+	return &r, nil
+}
+
+func apiRegister(apiURL string, req RegisterUserRequest) (*loginResp, error) {
+	c := &apiClient{url: strings.TrimRight(apiURL, "/"), hc: &http.Client{Timeout: 15 * time.Second}}
+	var r loginResp
+	if err := c.do("POST", "/api/v1/auth/register", req, &r); err != nil {
+		return nil, err
+	}
+	if r.Tokens.AccessToken == "" {
+		return nil, fmt.Errorf("register: server returned no access token")
+	}
+	return &r, nil
+}
+
+func (a *apiClient) registerUser(req RegisterUserRequest) (*loginResp, error) {
+	var r loginResp
+	if err := a.do("POST", "/api/v1/auth/register", req, &r); err != nil {
+		return nil, err
+	}
+	if r.Tokens.AccessToken == "" {
+		return nil, fmt.Errorf("register: server returned no access token")
 	}
 	return &r, nil
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -116,10 +117,43 @@ func TestE2E_HelpFlag(t *testing.T) {
 	if code != 0 {
 		t.Errorf("--help exit code = %d, want 0", code)
 	}
-	for _, want := range []string{"login", "up", "init", "logs"} {
+	for _, want := range []string{"auth", "login", "up", "init", "logs"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("--help missing command %q in:\n%s", want, stderr)
 		}
+	}
+}
+
+func TestE2E_AuthRegister(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Errorf("method = %s", r.Method)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["name"] != "Alice" || body["email"] != "alice@example.com" || body["password"] != "password123" {
+			t.Errorf("register body = %+v", body)
+		}
+		fmt.Fprint(w, `{"tokens":{"access_token":"AT","refresh_token":"RT","expires_at":1},"user":{"id":9,"email":"alice@example.com","name":"Alice"}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, stderr, code := runCLI(t, nil, nil,
+		"auth", "register",
+		"--api", srv.URL,
+		"--name", "Alice",
+		"--email", "alice@example.com",
+		"--password", "password123",
+	)
+	if code != 0 {
+		t.Fatalf("auth register exit code = %d, stderr:\n%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "registered alice@example.com") {
+		t.Fatalf("stderr missing success message:\n%s", stderr)
 	}
 }
 
