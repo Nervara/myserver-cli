@@ -120,6 +120,38 @@ func TestAPILogin_NoToken(t *testing.T) {
 	}
 }
 
+func TestAPIRegister_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/api/v1/auth/register" {
+			t.Errorf("unexpected request = %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["name"] != "Alice" || body["email"] != "alice@example.com" || body["password"] != "password123" {
+			t.Errorf("register payload = %+v", body)
+		}
+		fmt.Fprint(w, `{"tokens":{"access_token":"AT","refresh_token":"RT","expires_at":123},"user":{"id":9,"email":"alice@example.com","name":"Alice"}}`)
+	}))
+	defer srv.Close()
+
+	r, err := apiRegister(srv.URL, RegisterUserRequest{
+		Name:     "Alice",
+		Email:    "alice@example.com",
+		Password: "password123",
+	})
+	if err != nil {
+		t.Fatalf("apiRegister: %v", err)
+	}
+	if r.Tokens.AccessToken != "AT" {
+		t.Errorf("access token = %q, want AT", r.Tokens.AccessToken)
+	}
+	if r.User.ID != 9 || r.User.Email != "alice@example.com" {
+		t.Errorf("user = %+v", r.User)
+	}
+}
+
 // ─── listTeams / listApps / patch / deploy ───────────────────────────
 
 func TestListTeamsAndApps(t *testing.T) {

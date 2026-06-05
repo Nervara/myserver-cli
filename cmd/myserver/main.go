@@ -30,6 +30,7 @@ type cmd struct {
 }
 
 var commands = []cmd{
+	{"auth", "authentication helpers (`auth register`)", runAuth},
 	{"login", "authenticate against a myserver instance", runLogin},
 	{"logout", "forget stored credentials", runLogout},
 	{"whoami", "show the currently logged-in user", runWhoami},

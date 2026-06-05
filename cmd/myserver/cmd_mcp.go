@@ -17,7 +17,8 @@
 //
 // Auth: reuses ~/.myserver/credentials.json from `myserver login`. For
 // headless / CI, set MYSERVER_API_URL + MYSERVER_TOKEN (and optionally
-// MYSERVER_TEAM_ID) instead.
+// MYSERVER_TEAM_ID) instead. For first-user bootstrap, MYSERVER_API_URL alone
+// is enough for unauthenticated tools such as register_user.
 
 package main
 
@@ -106,6 +107,7 @@ func mcpUsage() {
 // mcpResolveAPIClient picks credentials in priority order:
 //  1. MYSERVER_API_URL + MYSERVER_TOKEN env vars (headless mode)
 //  2. ~/.myserver/credentials.json (interactive `myserver login` flow)
+//  3. MYSERVER_API_URL only (bootstrap mode for unauthenticated tools)
 //
 // Team ID resolution, in order:
 //  1. MYSERVER_TEAM_ID env var
@@ -118,6 +120,9 @@ func mcpResolveAPIClient() (*apiClient, error) {
 	} else {
 		c, err := loadCredentials()
 		if err != nil {
+			if url := os.Getenv("MYSERVER_API_URL"); url != "" {
+				return newAPI(&Credentials{APIURL: url}, 0), nil
+			}
 			return nil, fmt.Errorf("mcp: %w (or set MYSERVER_API_URL + MYSERVER_TOKEN)", err)
 		}
 		creds = c

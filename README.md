@@ -63,6 +63,7 @@ myserver login --api https://myserver.your-domain.com
 
 ```
 login       authenticate against a myserver instance
+auth        authentication helpers (`auth register`)
 logout      forget stored credentials
 whoami      show the currently logged-in user
 init        wire the current directory to an app

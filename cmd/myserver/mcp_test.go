@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,6 +106,18 @@ func TestMCP_ToolsList(t *testing.T) {
 	if annot == nil || annot["destructiveHint"] != true {
 		t.Errorf("create_sqlite_resource should have destructiveHint, got %v", annot)
 	}
+
+	var registerTool map[string]any
+	for _, raw := range tools {
+		t := raw.(map[string]any)
+		if t["name"] == "register_user" {
+			registerTool = t
+			break
+		}
+	}
+	if registerTool == nil {
+		t.Fatal("register_user tool missing")
+	}
 }
 
 func TestRunMCP_UnknownSubcommandDoesNotStartServer(t *testing.T) {
@@ -114,6 +127,63 @@ func TestRunMCP_UnknownSubcommandDoesNotStartServer(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown mcp subcommand") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestMCPResolveAPIClient_AllowsBootstrapWithoutToken(t *testing.T) {
+	t.Setenv("MYSERVER_API_URL", "http://bootstrap.local")
+	t.Setenv("MYSERVER_TOKEN", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	api, err := mcpResolveAPIClient()
+	if err != nil {
+		t.Fatalf("mcpResolveAPIClient: %v", err)
+	}
+	if api.url != "http://bootstrap.local" {
+		t.Fatalf("api url = %q", api.url)
+	}
+	if api.token != "" {
+		t.Fatalf("token = %q, want empty", api.token)
+	}
+}
+
+func TestMCP_ToolCallRegisterUser(t *testing.T) {
+	var sawRegister bool
+	api, srv := fakeAPI(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/auth/register" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		sawRegister = true
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["name"] != "Alice" || body["email"] != "alice@example.com" || body["password"] != "password123" {
+			t.Fatalf("register body = %+v", body)
+		}
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"tokens":{"access_token":"SECRET","refresh_token":"RT","expires_at":1},"user":{"id":9,"email":"alice@example.com","name":"Alice"}}`)
+	})
+	defer srv.Close()
+
+	resps := runServer(t, api, rpcLine(t, 3, "tools/call", map[string]any{
+		"name": "register_user",
+		"arguments": map[string]any{
+			"name":     "Alice",
+			"email":    "alice@example.com",
+			"password": "password123",
+		},
+	}))
+	if !sawRegister {
+		t.Fatal("register endpoint was not called")
+	}
+	content := resps[0]["result"].(map[string]any)["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(content, "Created user #9") || !strings.Contains(content, "alice@example.com") {
+		t.Fatalf("unexpected content: %s", content)
+	}
+	if strings.Contains(content, "SECRET") {
+		t.Fatal("register_user response must not leak access token")
 	}
 }
 
