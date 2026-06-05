@@ -61,12 +61,12 @@ var mcpTools = []toolSpec{
 	},
 	{
 		Name:        "register_user",
-		Description: "Register a new myserver user through the public /auth/register endpoint. Use for self-hosted first-user/admin bootstrap or when registration is intentionally enabled. Mutating: creates a user and personal team. Required: name, email, password. Optional: timezone. Does not return tokens to avoid leaking credentials through MCP transcripts; after registration, ask the user to run `myserver login` or use the CLI `myserver auth register` if they want credentials saved locally.",
+		Description: "Register a new myserver user through the public /auth/register endpoint. Prefer `myserver auth register` for password entry because it can prompt locally or read from stdin. Use this MCP tool only for self-hosted first-user/admin bootstrap or intentionally enabled registration when the user understands the password may appear in MCP transcripts/logs. Mutating: creates a user and personal team. Required: name, email, password. Optional: timezone. Does not return tokens; after registration, ask the user to run `myserver login` if they want credentials saved locally.",
 		InputSchema: schema(
 			map[string]any{
 				"name":     map[string]any{"type": "string", "description": "Display name for the new user"},
 				"email":    map[string]any{"type": "string", "description": "Email address for the new user"},
-				"password": map[string]any{"type": "string", "description": "Password for the new user. Registration may reject weak passwords."},
+				"password": map[string]any{"type": "string", "description": "Password for the new user. Prefer the CLI prompt or --password-stdin when possible; MCP inputs may be visible in transcripts/logs. Registration may reject weak passwords."},
 				"timezone": map[string]any{"type": "string", "description": "Optional IANA timezone identifier, e.g. Europe/Dublin"},
 			},
 			"name", "email", "password",

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"syscall"
@@ -40,13 +41,15 @@ func runAuthRegister(args []string) error {
 	name := fs.String("name", "", "user display name")
 	email := fs.String("email", "", "user email")
 	password := fs.String("password", "", "user password (prompted when omitted)")
+	passwordStdin := fs.Bool("password-stdin", false, "read user password from stdin")
 	timezone := fs.String("timezone", "", "IANA timezone identifier (optional)")
 	noLogin := fs.Bool("no-login", false, "do not save returned credentials")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: myserver auth register --email=<email> --name=<name> [--password=<password>] [flags]")
+		fmt.Fprintln(os.Stderr, "Usage: myserver auth register --email=<email> --name=<name> [--password-stdin] [flags]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  Registers a new user through /auth/register. By default the returned")
 		fmt.Fprintln(os.Stderr, "  access token is saved just like `myserver login`.")
+		fmt.Fprintln(os.Stderr, "  For automation, prefer --password-stdin over --password.")
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -64,7 +67,18 @@ func runAuthRegister(args []string) error {
 	if req.Email == "" {
 		return fmt.Errorf("--email is required")
 	}
-	if req.Password == "" {
+	if req.Password != "" && *passwordStdin {
+		return fmt.Errorf("--password and --password-stdin are mutually exclusive")
+	}
+	if *passwordStdin {
+		raw, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("read password from stdin: %w", err)
+		}
+		req.Password = strings.TrimRight(string(raw), "\r\n")
+	} else if req.Password != "" {
+		fmt.Fprintln(os.Stderr, "warning: --password may be visible in shell history and process listings; prefer the prompt or --password-stdin")
+	} else {
 		fmt.Fprint(os.Stderr, "password: ")
 		pw, err := term.ReadPassword(int(syscall.Stdin))
 		fmt.Fprintln(os.Stderr)

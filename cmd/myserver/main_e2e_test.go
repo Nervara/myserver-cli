@@ -155,6 +155,55 @@ func TestE2E_AuthRegister(t *testing.T) {
 	if !strings.Contains(stderr, "registered alice@example.com") {
 		t.Fatalf("stderr missing success message:\n%s", stderr)
 	}
+	if !strings.Contains(stderr, "warning: --password may be visible") {
+		t.Fatalf("stderr missing password warning:\n%s", stderr)
+	}
+}
+
+func TestE2E_AuthRegisterPasswordStdin(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["password"] != "secret with spaces" {
+			t.Errorf("password = %q", body["password"])
+		}
+		fmt.Fprint(w, `{"tokens":{"access_token":"AT","refresh_token":"RT","expires_at":1},"user":{"id":9,"email":"alice@example.com","name":"Alice"}}`)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, stderr, code := runCLI(t, nil, strings.NewReader("secret with spaces\n"),
+		"auth", "register",
+		"--api", srv.URL,
+		"--name", "Alice",
+		"--email", "alice@example.com",
+		"--password-stdin",
+	)
+	if code != 0 {
+		t.Fatalf("auth register exit code = %d, stderr:\n%s", code, stderr)
+	}
+	if strings.Contains(stderr, "warning: --password") {
+		t.Fatalf("stdin password should not print direct-password warning:\n%s", stderr)
+	}
+}
+
+func TestE2E_AuthRegisterRejectsPasswordConflict(t *testing.T) {
+	_, stderr, code := runCLI(t, nil, strings.NewReader("secret\n"),
+		"auth", "register",
+		"--name", "Alice",
+		"--email", "alice@example.com",
+		"--password", "secret",
+		"--password-stdin",
+	)
+	if code == 0 {
+		t.Fatalf("auth register should reject conflicting password inputs")
+	}
+	if !strings.Contains(stderr, "--password and --password-stdin are mutually exclusive") {
+		t.Fatalf("stderr missing conflict message:\n%s", stderr)
+	}
 }
 
 func TestE2E_RequiresLogin(t *testing.T) {
