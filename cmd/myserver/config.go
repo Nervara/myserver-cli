@@ -21,9 +21,10 @@ import (
 
 // Credentials persists per-machine across CLI invocations. Don't commit.
 type Credentials struct {
-	APIURL string `json:"api_url"`
-	Token  string `json:"token"`
-	Email  string `json:"email,omitempty"` // for `status` to show whose creds these are
+	APIURL        string `json:"api_url"`
+	Token         string `json:"token"`
+	Email         string `json:"email,omitempty"`           // for `status` to show whose creds these are
+	CurrentTeamID int64  `json:"current_team_id,omitempty"` // last team selected by the CLI
 }
 
 // ProjectConfig persists per-repo. Commit it so teammates `myserver up` the

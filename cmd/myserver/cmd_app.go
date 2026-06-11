@@ -457,13 +457,18 @@ func runAppCreate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("%w — run `myserver login` first", err)
 	}
+	requestCreds := *creds
 	if *apiURL != "" {
-		creds.APIURL = *apiURL
+		requestCreds.APIURL = *apiURL
 	}
+	rememberTeam := *apiURL == ""
 
-	// Team picker is optional: if there's exactly one team, skip prompting.
+	// Team picker is optional: reuse the last selected team when available.
+	if *teamID == 0 && rememberTeam && creds.CurrentTeamID > 0 {
+		*teamID = creds.CurrentTeamID
+	}
 	if *teamID == 0 {
-		api := newAPI(creds, 0)
+		api := newAPI(&requestCreds, 0)
 		teams, err := api.listTeams()
 		if err != nil {
 			return fmt.Errorf("list teams: %w", err)
@@ -477,8 +482,13 @@ func runAppCreate(args []string) error {
 		}
 		*teamID = picked
 	}
+	if rememberTeam {
+		if err := rememberCurrentTeam(creds, *teamID); err != nil {
+			return err
+		}
+	}
 
-	api := newAPI(creds, *teamID)
+	api := newAPI(&requestCreds, *teamID)
 
 	req := CreateApplicationRequest{
 		Name:          strings.TrimSpace(*name),
@@ -611,9 +621,11 @@ func runAppUpdate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("%w — run `myserver login` first", err)
 	}
+	requestCreds := *creds
 	if *apiURL != "" {
-		creds.APIURL = *apiURL
+		requestCreds.APIURL = *apiURL
 	}
+	rememberTeam := *apiURL == ""
 
 	// Resolve appID + teamID from project config if missing.
 	if *appID == 0 || *teamID == 0 {
@@ -630,14 +642,24 @@ func runAppUpdate(args []string) error {
 		return fmt.Errorf("--app is required (or run from a directory with myserver.json)")
 	}
 	if *teamID == 0 {
+		if rememberTeam && creds.CurrentTeamID > 0 {
+			*teamID = creds.CurrentTeamID
+		}
+	}
+	if *teamID == 0 {
 		// Last-ditch: pick the only team so an admin can run `app update`
 		// without `init` having been run first.
-		api := newAPI(creds, 0)
+		api := newAPI(&requestCreds, 0)
 		teams, terr := api.listTeams()
 		if terr == nil && len(teams) == 1 {
 			*teamID = teams[0].ID
 		} else {
 			return fmt.Errorf("--team is required when not in a project directory")
+		}
+	}
+	if rememberTeam {
+		if err := rememberCurrentTeam(creds, *teamID); err != nil {
+			return err
 		}
 	}
 
@@ -676,7 +698,7 @@ func runAppUpdate(args []string) error {
 		return fmt.Errorf("nothing to update — pass at least one --<field>=<value> flag (see -h)")
 	}
 
-	api := newAPI(creds, *teamID)
+	api := newAPI(&requestCreds, *teamID)
 	if err := api.updateApp(*appID, req); err != nil {
 		return fmt.Errorf("update app %d: %w", *appID, err)
 	}

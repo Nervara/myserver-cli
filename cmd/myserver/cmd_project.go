@@ -234,11 +234,16 @@ func resolveTeamAPI(teamID int64, apiURL string) (*apiClient, int64, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w — run `myserver login` first", err)
 	}
+	requestCreds := *creds
 	if apiURL != "" {
-		creds.APIURL = apiURL
+		requestCreds.APIURL = apiURL
+	}
+	remember := apiURL == ""
+	if teamID == 0 && remember && creds.CurrentTeamID > 0 {
+		teamID = creds.CurrentTeamID
 	}
 	if teamID == 0 {
-		api := newAPI(creds, 0)
+		api := newAPI(&requestCreds, 0)
 		teams, err := api.listTeams()
 		if err != nil {
 			return nil, 0, fmt.Errorf("list teams: %w", err)
@@ -252,5 +257,21 @@ func resolveTeamAPI(teamID int64, apiURL string) (*apiClient, int64, error) {
 		}
 		teamID = picked
 	}
-	return newAPI(creds, teamID), teamID, nil
+	if remember {
+		if err := rememberCurrentTeam(creds, teamID); err != nil {
+			return nil, 0, err
+		}
+	}
+	return newAPI(&requestCreds, teamID), teamID, nil
+}
+
+func rememberCurrentTeam(creds *Credentials, teamID int64) error {
+	if creds == nil || teamID == 0 || creds.CurrentTeamID == teamID {
+		return nil
+	}
+	creds.CurrentTeamID = teamID
+	if err := saveCredentials(creds); err != nil {
+		return fmt.Errorf("save current team: %w", err)
+	}
+	return nil
 }
