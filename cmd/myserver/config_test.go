@@ -37,9 +37,10 @@ func TestCredentials_RoundTrip(t *testing.T) {
 	home := withFakeHome(t)
 
 	in := &Credentials{
-		APIURL: "https://example.test",
-		Token:  "tok-abc",
-		Email:  "a@b.com",
+		APIURL:        "https://example.test",
+		Token:         "tok-abc",
+		Email:         "a@b.com",
+		CurrentTeamID: 42,
 	}
 	if err := saveCredentials(in); err != nil {
 		t.Fatalf("saveCredentials: %v", err)

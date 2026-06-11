@@ -40,6 +40,9 @@ func runInit(args []string) error {
 	fmt.Fprintf(os.Stderr, "✓ Logged in as %s\n\n", creds.Email)
 
 	// ── Pick the team ─────────────────────────────────────────────────
+	if *teamID == 0 && creds.CurrentTeamID > 0 {
+		*teamID = creds.CurrentTeamID
+	}
 	if *teamID == 0 {
 		api := newAPI(creds, 0)
 		teams, err := api.listTeams()
@@ -53,6 +56,9 @@ func runInit(args []string) error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := rememberCurrentTeam(creds, *teamID); err != nil {
+		return err
 	}
 
 	api := newAPI(creds, *teamID)
