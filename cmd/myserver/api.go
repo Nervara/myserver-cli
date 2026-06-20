@@ -230,9 +230,12 @@ type Application struct {
 	Status                  string `json:"status"`
 	EnvironmentID           int64  `json:"environment_id"`
 	DestinationID           *int64 `json:"destination_id"`
+	GitRepository           string `json:"git_repository"`
 	DockerRegistryImageName string `json:"docker_registry_image_name"`
 	DockerRegistryImageTag  string `json:"docker_registry_image_tag"`
 	DockerRegistryID        *int64 `json:"docker_registry_id"`
+	Dockerfile              string `json:"dockerfile"`
+	DockerCompose           string `json:"docker_compose"`
 }
 
 type DockerRegistry struct {
@@ -267,6 +270,8 @@ type Deployment struct {
 	Error          string `json:"error"`
 	DeploymentUUID string `json:"deployment_uuid"`
 	CreatedAt      string `json:"created_at"`
+	SourceKind     string `json:"source_kind"`
+	SourceHash     string `json:"source_hash"`
 }
 
 type DeployLog struct {
@@ -627,6 +632,62 @@ func (a *apiClient) sourceTarball(appID int64, body io.Reader) (*Deployment, err
 	return &envelope.Deployment, nil
 }
 
+func (a *apiClient) sourceSyncPlan(appID int64, manifest *sourceManifest) (*sourceSyncPlan, error) {
+	var plan sourceSyncPlan
+	if err := a.do("POST", fmt.Sprintf("/api/v1/applications/%d/source-sync/plan", appID), manifest, &plan); err != nil {
+		return nil, err
+	}
+	return &plan, nil
+}
+
+func (a *apiClient) sourceSync(appID int64, manifestHash string, body io.Reader) (*Deployment, error) {
+	pr, pw := io.Pipe()
+	mw := multipart.NewWriter(pw)
+	go func() {
+		defer pw.Close()
+		defer mw.Close()
+		fw, err := mw.CreateFormFile("tarball", "source-sync.tar.gz")
+		if err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		if _, err := io.Copy(fw, body); err != nil {
+			pw.CloseWithError(err)
+		}
+	}()
+	req, err := http.NewRequest("POST",
+		fmt.Sprintf("%s/api/v1/applications/%d/source-sync?manifest_hash=%s", a.url, appID, manifestHash), pr)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("X-Team-ID", fmt.Sprintf("%d", a.teamID))
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	hc := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		var errPayload struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(respBody, &errPayload) == nil && errPayload.Error != "" {
+			return nil, fmt.Errorf("source-sync: %d %s", resp.StatusCode, errPayload.Error)
+		}
+		return nil, fmt.Errorf("source-sync: %d %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	var envelope struct {
+		Deployment Deployment `json:"deployment"`
+	}
+	if err := json.Unmarshal(respBody, &envelope); err != nil {
+		return nil, fmt.Errorf("decode source-sync response: %w", err)
+	}
+	return &envelope.Deployment, nil
+}
+
 // buildTarball POSTs a multipart upload to /applications/{id}/build-tarball
 // and streams the response back through onLine. Returns the parsed image
 // repo + tag from the final `OK image_repo=... tag=...` line.
@@ -715,11 +776,26 @@ type User struct {
 }
 
 func (a *apiClient) getMe() (*User, error) {
-	var u User
-	if err := a.do("GET", "/api/v1/auth/me", nil, &u); err != nil {
+	var resp struct {
+		User          User `json:"user"`
+		EmailVerified bool `json:"email_verified"`
+		ID            int64  `json:"id"`
+		Email         string `json:"email"`
+		Name          string `json:"name"`
+		IsSystemAdmin bool   `json:"is_system_admin"`
+	}
+	if err := a.do("GET", "/api/v1/auth/me", nil, &resp); err != nil {
 		return nil, err
 	}
-	return &u, nil
+	if resp.User.ID == 0 && resp.User.Email == "" {
+		resp.User = User{
+			ID:            resp.ID,
+			Email:         resp.Email,
+			Name:          resp.Name,
+			IsSystemAdmin: resp.IsSystemAdmin,
+		}
+	}
+	return &resp.User, nil
 }
 
 // Project — workspace under a team. Holds environments.

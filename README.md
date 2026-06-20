@@ -86,6 +86,13 @@ version     print version
 
 `myserver <command> -h` for command-specific flags.
 
+Bootstrap a project with several environments:
+
+```bash
+project_id=$(myserver project create --name=attachment-style)
+myserver env create --project="$project_id" production staging preview
+```
+
 ## MCP server (Claude Desktop, Cursor, Cline, etc.)
 
 The CLI ships a [Model Context Protocol](https://modelcontextprotocol.io/) server over stdio so any MCP-capable AI client can drive myserver.

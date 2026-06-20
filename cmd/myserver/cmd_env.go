@@ -115,16 +115,17 @@ func runEnvCreate(args []string) error {
 	fs.SetOutput(os.Stderr)
 	teamID := fs.Int64("team", 0, "team id (defaults to your only team, or prompts)")
 	projectID := fs.Int64("project", 0, "project id (required)")
-	name := fs.String("name", "", "environment name (required, e.g. production / staging)")
+	var names stringListFlag
+	fs.Var(&names, "name", "environment name (repeat or comma-separate for multiple)")
 	description := fs.String("description", "", "human-readable description")
 	apiURL := fs.String("api", "", "myserver API URL (defaults to logged-in URL)")
 
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: myserver env create --project=<id> --name=<name> [flags]")
+		fmt.Fprintln(os.Stderr, "Usage: myserver env create --project=<id> (--name=<name>... | <name>...) [flags]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Required:")
 		fmt.Fprintln(os.Stderr, "  --project=<id>         project id (find via `myserver project list`)")
-		fmt.Fprintln(os.Stderr, "  --name=<name>          environment name (e.g. production, staging, preview)")
+		fmt.Fprintln(os.Stderr, "  --name=<name>          environment name; repeat or comma-separate for multiple")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Optional:")
 		fmt.Fprintln(os.Stderr, "  --description=<text>   human-readable description")
@@ -132,6 +133,7 @@ func runEnvCreate(args []string) error {
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Example:")
 		fmt.Fprintln(os.Stderr, "  myserver env create --project=3 --name=production")
+		fmt.Fprintln(os.Stderr, "  myserver env create --project=3 production staging preview")
 	}
 
 	if err := fs.Parse(args); err != nil {
@@ -144,9 +146,10 @@ func runEnvCreate(args []string) error {
 		fs.Usage()
 		return fmt.Errorf("--project is required (run `myserver project list` to find one)")
 	}
-	if strings.TrimSpace(*name) == "" {
+	envNames := normalizeEnvNames(names, fs.Args())
+	if len(envNames) == 0 {
 		fs.Usage()
-		return fmt.Errorf("--name is required")
+		return fmt.Errorf("--name or positional environment name is required")
 	}
 
 	api, _, err := resolveTeamAPI(*teamID, *apiURL)
@@ -154,19 +157,57 @@ func runEnvCreate(args []string) error {
 		return err
 	}
 
-	req := CreateEnvironmentRequest{Name: strings.TrimSpace(*name)}
-	if s := strings.TrimSpace(*description); s != "" {
-		req.Description = &s
+	var created []Environment
+	for _, envName := range envNames {
+		req := CreateEnvironmentRequest{Name: envName}
+		if s := strings.TrimSpace(*description); s != "" {
+			req.Description = &s
+		}
+		e, err := api.createEnvironment(*projectID, req)
+		if err != nil {
+			return fmt.Errorf("create environment %q: %w", envName, err)
+		}
+		created = append(created, *e)
+		fmt.Fprintf(os.Stderr, "✓ Created environment %q (id %d) in project %d\n", e.Name, e.ID, *projectID)
+		// Also print the id on stdout so scripts can capture it.
+		fmt.Println(strconv.FormatInt(e.ID, 10))
 	}
-	e, err := api.createEnvironment(*projectID, req)
-	if err != nil {
-		return fmt.Errorf("create environment: %w", err)
+	if len(created) == 1 {
+		fmt.Fprintf(os.Stderr, "\nNext: `myserver app create --env=%d --name=<app> --build-pack=<pack>`\n", created[0].ID)
+	} else {
+		fmt.Fprintln(os.Stderr, "\nNext: create apps against one of the environment ids printed above.")
 	}
-	fmt.Fprintf(os.Stderr, "✓ Created environment %q (id %d) in project %d\n", e.Name, e.ID, *projectID)
-	fmt.Fprintf(os.Stderr, "\nNext: `myserver app create --env=%d --name=<app> --build-pack=<pack>`\n", e.ID)
-	// Also print the id on stdout so scripts can capture it.
-	fmt.Println(strconv.FormatInt(e.ID, 10))
 	return nil
+}
+
+type stringListFlag []string
+
+func (f *stringListFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *stringListFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
+}
+
+func normalizeEnvNames(flagNames []string, positional []string) []string {
+	var out []string
+	add := func(raw string) {
+		for _, part := range strings.Split(raw, ",") {
+			name := strings.TrimSpace(part)
+			if name != "" {
+				out = append(out, name)
+			}
+		}
+	}
+	for _, raw := range flagNames {
+		add(raw)
+	}
+	for _, raw := range positional {
+		add(raw)
+	}
+	return out
 }
 
 // runEnvDelete handles `myserver env delete`.

@@ -153,13 +153,20 @@ func runUpFromDockerImage(api *apiClient, pc *ProjectConfig, tagFlag string, ski
 					fmt.Fprintf(os.Stderr, "  packed %d files, %.1fMB uncompressed\n",
 						files, float64(bytes)/(1<<20))
 				}
+				if err != nil {
+					_ = pw.CloseWithError(err)
+				} else {
+					_ = pw.Close()
+				}
 				done <- err
-				_ = pw.Close()
 			}()
 			fmt.Fprintln(os.Stderr, "▸ uploading + building remotely")
-			repo, tg, err := api.buildTarball(pc.AppID, tag, pr, func(line string) {
+			progress := newUploadProgressReader(pr, "uploaded")
+			repo, tg, err := api.buildTarball(pc.AppID, tag, progress, func(line string) {
 				fmt.Println(line)
 			})
+			progress.Finish()
+			_ = pr.Close()
 			if perr := <-done; perr != nil && err == nil {
 				err = perr
 			}
@@ -208,21 +215,70 @@ func runUpFromDockerImage(api *apiClient, pc *ProjectConfig, tagFlag string, ski
 }
 
 // runUpFromSource implements `myserver up` for non-dockerimage build packs.
-// One round trip: pack cwd, stream to /source-tarball; the server extracts
-// on the build target, creates the deployment with SourceTarballPath set,
-// and enqueues the worker task. Pipeline's clone stage skips git-clone
-// because the source is already there.
+// Preferred path: hash cwd, ask the server which files changed, upload a
+// tiny sync tar, then deploy from the build-server cache. Older servers fall
+// back to the original full /source-tarball upload.
 //
 // No image patch: pipeline builds the image from source (railpack /
 // dockerfile / dockercompose / static), so the app's image fields are
 // owned by the pipeline, not the CLI.
 func runUpFromSource(api *apiClient, pc *ProjectConfig, dryRun, noFollow bool) error {
-	fmt.Fprintln(os.Stderr, "▸ packing source")
+	fmt.Fprintln(os.Stderr, "▸ scanning source")
 	if dryRun {
-		fmt.Fprintln(os.Stderr, "  [dry-run] would tar+gzip cwd, POST /source-tarball, then tail deploy logs")
+		fmt.Fprintln(os.Stderr, "  [dry-run] would hash cwd, ask /source-sync/plan, upload changed files, then tail deploy logs")
 		return nil
 	}
 
+	manifest, err := buildSourceManifest(".")
+	if err != nil {
+		return err
+	}
+	var totalBytes int64
+	for _, f := range manifest.Files {
+		totalBytes += f.Size
+	}
+	fmt.Fprintf(os.Stderr, "  scanned %d files, %.1fMB uncompressed\n", len(manifest.Files), float64(totalBytes)/(1<<20))
+
+	plan, err := api.sourceSyncPlan(pc.AppID, manifest)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  source cache unavailable (%v); falling back to full upload\n", err)
+		return runUpFromSourceTarball(api, pc, noFollow)
+	}
+	fmt.Fprintf(os.Stderr, "▸ source cache: reuse %d files, upload %d files (%.1fMB), delete %d\n",
+		plan.ReusedFiles, plan.UploadFiles, float64(plan.UploadBytes)/(1<<20), len(plan.DeletePaths))
+
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		err := writeSourceSyncTar(".", manifest, plan.MissingPaths, plan.DeletePaths, pw)
+		if err != nil {
+			_ = pw.CloseWithError(err)
+		} else {
+			_ = pw.Close()
+		}
+		done <- err
+	}()
+
+	fmt.Fprintln(os.Stderr, "▸ uploading changed source + creating deployment")
+	progress := newUploadProgressReader(pr, "uploaded")
+	dep, err := api.sourceSync(pc.AppID, manifest.Hash, progress)
+	progress.Finish()
+	_ = pr.Close()
+	if perr := <-done; perr != nil && err == nil {
+		err = perr
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "  deployment %d enqueued (status=%s)\n", dep.ID, dep.Status)
+	if noFollow {
+		return nil
+	}
+	return tailDeployment(api, pc.AppID, dep.ID)
+}
+
+func runUpFromSourceTarball(api *apiClient, pc *ProjectConfig, noFollow bool) error {
+	fmt.Fprintln(os.Stderr, "▸ packing source")
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
@@ -231,12 +287,19 @@ func runUpFromSource(api *apiClient, pc *ProjectConfig, dryRun, noFollow bool) e
 			fmt.Fprintf(os.Stderr, "  packed %d files, %.1fMB uncompressed\n",
 				files, float64(bytes)/(1<<20))
 		}
+		if err != nil {
+			_ = pw.CloseWithError(err)
+		} else {
+			_ = pw.Close()
+		}
 		done <- err
-		_ = pw.Close()
 	}()
 
 	fmt.Fprintln(os.Stderr, "▸ uploading source + creating deployment")
-	dep, err := api.sourceTarball(pc.AppID, pr)
+	progress := newUploadProgressReader(pr, "uploaded")
+	dep, err := api.sourceTarball(pc.AppID, progress)
+	progress.Finish()
+	_ = pr.Close()
 	if perr := <-done; perr != nil && err == nil {
 		err = perr
 	}

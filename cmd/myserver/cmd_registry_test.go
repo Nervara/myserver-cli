@@ -112,3 +112,17 @@ func TestRunDeploymentGetHelp(t *testing.T) {
 		t.Fatalf("deployment get help: %v", err)
 	}
 }
+
+func TestRequiresReuseLastImage(t *testing.T) {
+	gitURL := "https://github.com/acme/app.git"
+	image := "registry.example.com/app"
+	if !requiresReuseLastImageFlag(&Application{}) {
+		t.Fatal("blank app should require --reuse-last-image")
+	}
+	if requiresReuseLastImageFlag(&Application{GitRepository: gitURL}) {
+		t.Fatal("git app should not require --reuse-last-image")
+	}
+	if requiresReuseLastImageFlag(&Application{DockerRegistryImageName: image}) {
+		t.Fatal("docker image app should not require --reuse-last-image")
+	}
+}

@@ -185,6 +185,7 @@ func runAppDeploy(args []string) error {
 	teamID := fs.Int64("team", 0, "team id (defaults to ./myserver.json or your only team)")
 	appID := fs.Int64("app", 0, "application id (positional, --app, or ./myserver.json)")
 	apiURL := fs.String("api", "", "myserver API URL (defaults to logged-in URL)")
+	reuseLastImage := fs.Bool("reuse-last-image", false, "confirm redeploying the previous image when no source is configured")
 
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage: myserver app deploy <id> [flags]")
@@ -192,6 +193,8 @@ func runAppDeploy(args []string) error {
 		fmt.Fprintln(os.Stderr, "  Deploy an existing application: pull/build its image and (re)start")
 		fmt.Fprintln(os.Stderr, "  its container on the app's server. The id may be given positionally,")
 		fmt.Fprintln(os.Stderr, "  via --app, or inferred from ./myserver.json.")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  --reuse-last-image  confirm redeploying the previous image when no source is configured")
 	}
 
 	var leadID int64
@@ -229,13 +232,33 @@ func runAppDeploy(args []string) error {
 	if err != nil {
 		return err
 	}
+	app, err := api.getApp(*appID)
+	if err != nil {
+		return fmt.Errorf("get app %d: %w", *appID, err)
+	}
+	if requiresReuseLastImageFlag(app) && !*reuseLastImage {
+		return fmt.Errorf("no source is configured for app %d; this would redeploy the previous image, not local code. Run `myserver up` from your project directory or pass --reuse-last-image to confirm", *appID)
+	}
 	dep, err := api.deployApp(*appID)
 	if err != nil {
 		return fmt.Errorf("deploy app %d: %w", *appID, err)
 	}
 	fmt.Fprintf(os.Stderr, "Deploy queued for app %d (deployment %d)\n", *appID, dep.ID)
+	if dep.SourceKind != "" {
+		fmt.Fprintf(os.Stderr, "  source: %s\n", dep.SourceKind)
+	}
 	fmt.Println(dep.ID)
 	return nil
+}
+
+func requiresReuseLastImageFlag(app *Application) bool {
+	if app == nil {
+		return true
+	}
+	return strings.TrimSpace(app.GitRepository) == "" &&
+		strings.TrimSpace(app.DockerRegistryImageName) == "" &&
+		strings.TrimSpace(app.Dockerfile) == "" &&
+		strings.TrimSpace(app.DockerCompose) == ""
 }
 
 // runAppLifecycle is the shared driver for start/stop/restart — they

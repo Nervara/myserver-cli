@@ -16,7 +16,7 @@ import (
 	"os"
 )
 
-var cliVersion = "0.1.0"
+var cliVersion = "0.1.129"
 
 const (
 	credentialsPath = ".myserver/credentials.json" // under $HOME

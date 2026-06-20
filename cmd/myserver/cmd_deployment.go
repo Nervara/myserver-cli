@@ -102,4 +102,10 @@ func printDeployment(dep *Deployment) {
 	if dep.Error != "" {
 		fmt.Printf("error:\t%s\n", dep.Error)
 	}
+	if dep.SourceKind != "" {
+		fmt.Printf("source_kind:\t%s\n", dep.SourceKind)
+	}
+	if dep.SourceHash != "" {
+		fmt.Printf("source_hash:\t%s\n", dep.SourceHash)
+	}
 }

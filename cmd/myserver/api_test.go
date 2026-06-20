@@ -152,6 +152,25 @@ func TestAPIRegister_Success(t *testing.T) {
 	}
 }
 
+func TestAPIGetMe_UnwrapsAuthMeResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || r.URL.Path != "/api/v1/auth/me" {
+			t.Errorf("unexpected request = %s %s", r.Method, r.URL.Path)
+		}
+		fmt.Fprint(w, `{"user":{"id":42,"email":"alice@example.com","name":"Alice","is_system_admin":true},"email_verified":true}`)
+	}))
+	defer srv.Close()
+
+	api := newAPI(&Credentials{APIURL: srv.URL, Token: "AT"}, 0)
+	user, err := api.getMe()
+	if err != nil {
+		t.Fatalf("getMe: %v", err)
+	}
+	if user.ID != 42 || user.Email != "alice@example.com" || user.Name != "Alice" || !user.IsSystemAdmin {
+		t.Fatalf("user = %+v", user)
+	}
+}
+
 // ─── listTeams / listApps / patch / deploy ───────────────────────────
 
 func TestListTeamsAndApps(t *testing.T) {
@@ -200,6 +219,79 @@ func TestDeployApp(t *testing.T) {
 	}
 	if d.ID != 555 || d.Status != "queued" {
 		t.Errorf("deploy resp = %+v", d)
+	}
+}
+
+func TestSourceSyncPlan_PostsManifest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/applications/42/source-sync/plan" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		var req sourceManifest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode manifest: %v", err)
+		}
+		if req.Hash != "abc" || len(req.Files) != 1 || req.Files[0].Path != "main.go" {
+			t.Fatalf("manifest request = %+v", req)
+		}
+		fmt.Fprint(w, `{"cache_ready":true,"manifest_hash":"abc","missing_paths":["main.go"],"delete_paths":["old.css"],"reused_files":2,"upload_files":1,"upload_bytes":12}`)
+	}))
+	defer srv.Close()
+
+	c := newAPI(&Credentials{APIURL: srv.URL, Token: "t"}, 99)
+	plan, err := c.sourceSyncPlan(42, &sourceManifest{
+		Hash:  "abc",
+		Files: []sourceManifestFile{{Path: "main.go", SHA256: "sha", Size: 12, Mode: 0o644}},
+	})
+	if err != nil {
+		t.Fatalf("sourceSyncPlan: %v", err)
+	}
+	if plan.UploadBytes != 12 || len(plan.DeletePaths) != 1 || plan.DeletePaths[0] != "old.css" {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+func TestSourceSync_UploadsDeltaTarball(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/applications/42/source-sync" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("manifest_hash") != "abc123" {
+			t.Fatalf("manifest_hash = %q", r.URL.Query().Get("manifest_hash"))
+		}
+		ct := r.Header.Get("Content-Type")
+		mediaType, params, err := mime.ParseMediaType(ct)
+		if err != nil || !strings.HasPrefix(mediaType, "multipart/") {
+			t.Fatalf("unexpected content-type: %s", ct)
+		}
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		part, err := mr.NextPart()
+		if err != nil {
+			t.Fatalf("read part: %v", err)
+		}
+		if part.FormName() != "tarball" {
+			t.Fatalf("form name = %q", part.FormName())
+		}
+		body, _ := io.ReadAll(part)
+		if !bytes.HasPrefix(body, []byte{0x1f, 0x8b}) {
+			t.Fatalf("upload is not gzip")
+		}
+		fmt.Fprint(w, `{"deployment":{"id":7,"application_id":42,"status":"queued","deployment_uuid":"u-7"},"source_tarball_path":"/tmp/x","manifest_hash":"abc123"}`)
+	}))
+	defer srv.Close()
+
+	var tarball bytes.Buffer
+	gz := gzip.NewWriter(&tarball)
+	_, _ = gz.Write([]byte("delta"))
+	_ = gz.Close()
+
+	c := newAPI(&Credentials{APIURL: srv.URL, Token: "t"}, 1)
+	dep, err := c.sourceSync(42, "abc123", &tarball)
+	if err != nil {
+		t.Fatalf("sourceSync: %v", err)
+	}
+	if dep.ID != 7 || dep.Status != "queued" {
+		t.Fatalf("deployment = %+v", dep)
 	}
 }
 
