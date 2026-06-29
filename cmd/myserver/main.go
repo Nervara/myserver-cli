@@ -16,7 +16,7 @@ import (
 	"os"
 )
 
-var cliVersion = "0.1.129"
+var cliVersion = "0.1.130"
 
 const (
 	credentialsPath = ".myserver/credentials.json" // under $HOME
@@ -46,6 +46,7 @@ var commands = []cmd{
 	{"env-vars", "manage app env vars (`env-vars list/set/delete`)", runEnvVars},
 	{"db", "manage managed databases (`db list/start/stop/restart/delete`)", runDB},
 	{"backup", "system backups (`backup list/create/download`) — admin only", runBackup},
+	{"tenant", "back up / restore your whole tenant space (`tenant export/restore`)", runTenant},
 	{"server", "register / list / delete destination servers (`server register`)", runServerCmd},
 	{"up", "deploy the current directory", runUp},
 	{"logs", "stream logs from the latest deployment", runLogs},

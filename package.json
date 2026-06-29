@@ -1,6 +1,6 @@
 {
   "name": "@serverops/myserver-cli",
-  "version": "0.1.129",
+  "version": "0.1.130",
   "description": "Command-line interface and MCP server for myserver — a self-hostable PaaS.",
   "license": "MIT",
   "homepage": "https://github.com/Nervara/myserver-cli",

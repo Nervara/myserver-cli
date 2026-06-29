@@ -32,6 +32,10 @@ func newAPI(creds *Credentials, teamID int64) *apiClient {
 }
 
 func (a *apiClient) do(method, path string, body any, out any) error {
+	return a.doWithHeaders(method, path, body, nil, out)
+}
+
+func (a *apiClient) doWithHeaders(method, path string, body any, headers map[string]string, out any) error {
 	var rdr io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -52,6 +56,9 @@ func (a *apiClient) do(method, path string, body any, out any) error {
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := a.hc.Do(req)
 	if err != nil {
@@ -777,8 +784,8 @@ type User struct {
 
 func (a *apiClient) getMe() (*User, error) {
 	var resp struct {
-		User          User `json:"user"`
-		EmailVerified bool `json:"email_verified"`
+		User          User   `json:"user"`
+		EmailVerified bool   `json:"email_verified"`
 		ID            int64  `json:"id"`
 		Email         string `json:"email"`
 		Name          string `json:"name"`
